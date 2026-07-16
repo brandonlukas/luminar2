@@ -43,15 +43,19 @@ const FRAG = /* glsl */ `
 `;
 
 export class FlowSim {
-  constructor(container) {
+  // opts.controls: 'full' (orbit/zoom/pan), 'rotate' (drag only — the page
+  // keeps its scroll wheel), or 'none'. opts.pixelRatio caps DPR per plate.
+  constructor(container, opts = {}) {
     this.container = container;
+    this.opts = opts;
     this.paused = false;
-    this.speed = 1;
-    this.sizeParam = 1;
+    this.running = true;
+    this.speed = opts.speed ?? 1;
+    this.sizeParam = opts.size ?? 1;
     this.onStats = null;
 
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, opts.pixelRatio ?? 2));
     this.renderer.setClearColor(0x000000, 1);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.1;
@@ -85,8 +89,9 @@ export class FlowSim {
 
     this.composer = new EffectComposer(this.renderer);
     this.renderPass = new RenderPass(this.scene, new THREE.PerspectiveCamera());
-    this.afterimagePass = new AfterimagePass(0.9);
-    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(2, 2), 0.9, 0.65, 0.0);
+    this.afterimagePass = new AfterimagePass(opts.trails ?? 0.9);
+    this.trailDamp = opts.trails ?? 0.9;
+    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(2, 2), opts.bloom ?? 0.9, 0.65, 0.0);
     this.composer.addPass(this.renderPass);
     this.composer.addPass(this.afterimagePass);
     this.composer.addPass(this.bloomPass);
@@ -196,6 +201,7 @@ export class FlowSim {
       this.controls.dispose();
       this.controls = null;
     }
+    const mode = this.opts.controls ?? 'full';
 
     if (this.field.is3D) {
       const cam = new THREE.PerspectiveCamera(45, 1, 0.01, this.diag * 20);
@@ -203,26 +209,36 @@ export class FlowSim {
       cam.position.set(cx + r * 1.6, cy - r * 1.9, cz + r * 1.1);
       cam.up.set(0, 0, 1);
       this.camera = cam;
-      this.controls = new OrbitControls(cam, this.renderer.domElement);
-      this.controls.target.set(cx, cy, cz);
-      this.controls.enableDamping = true;
-      this.controls.dampingFactor = 0.08;
-      this.controls.autoRotate = true;
-      this.controls.autoRotateSpeed = 0.4;
-      this.controls.addEventListener('start', () => {
-        this.controls.autoRotate = false;
-      });
+      if (mode !== 'none') {
+        this.controls = new OrbitControls(cam, this.renderer.domElement);
+        this.controls.target.set(cx, cy, cz);
+        this.controls.enableDamping = true;
+        this.controls.dampingFactor = 0.08;
+        this.controls.autoRotate = true;
+        this.controls.autoRotateSpeed = 0.4;
+        if (mode === 'rotate') {
+          this.controls.enableZoom = false;
+          this.controls.enablePan = false;
+        }
+        this.controls.addEventListener('start', () => {
+          this.controls.autoRotate = false;
+        });
+      }
     } else {
       const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
       cam.position.set(cx, cy, 10);
       cam.lookAt(cx, cy, 0);
       this.camera = cam;
-      this.controls = new OrbitControls(cam, this.renderer.domElement);
-      this.controls.target.set(cx, cy, 0);
-      this.controls.enableRotate = false;
-      this.controls.screenSpacePanning = true;
-      this.controls.enableDamping = true;
-      this.controls.dampingFactor = 0.12;
+      // 2D plates with 'rotate' get no controls at all — nothing to rotate,
+      // and the page keeps its wheel.
+      if (mode === 'full') {
+        this.controls = new OrbitControls(cam, this.renderer.domElement);
+        this.controls.target.set(cx, cy, 0);
+        this.controls.enableRotate = false;
+        this.controls.screenSpacePanning = true;
+        this.controls.enableDamping = true;
+        this.controls.dampingFactor = 0.12;
+      }
     }
     this.renderPass.camera = this.camera;
     this._resize();
@@ -370,6 +386,7 @@ export class FlowSim {
     requestAnimationFrame(this._loop);
     const dt = Math.min((now - this._lastT) / 1000, 0.05);
     this._lastT = now;
+    if (!this.running) return; // offscreen — keep the clock, skip the work
 
     this._fpsAcc += dt;
     this._fpsFrames++;

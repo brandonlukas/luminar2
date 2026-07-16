@@ -3,111 +3,350 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Luminar — Vector Field Observatory</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23000'/%3E%3Crect x='4' y='4' width='8' height='8' fill='%23e30613'/%3E%3C/svg%3E" />
+    <title>Luminar — a study in vector fields</title>
+    <meta name="description" content="A small atlas of vector fields: whirlpools, saddle points, strange attractors — and a bench where particles flow through your own CSV data. Everything runs in your browser." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23faf3e7'/%3E%3Ccircle cx='8' cy='8' r='5' fill='none' stroke='%231a1512' stroke-width='1'/%3E%3Ccircle cx='8' cy='8' r='1.6' fill='%23d0331b'/%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <div id="app">
-      <header id="topbar">
-        <div class="brand">
-          <span class="brand-mark" aria-hidden="true"></span>
-          <h1>Luminar</h1>
-          <span class="brand-sub">Vector Field Observatory</span>
+    <header class="masthead">
+      <a class="masthead-brand" href="#top">Luminar<span class="masthead-dot" aria-hidden="true"></span></a>
+      <nav class="masthead-nav" aria-label="contents">
+        <a href="#idea">The idea</a>
+        <a href="#plates">Plates</a>
+        <a href="#data">Data</a>
+        <a href="#observatory">Observatory</a>
+        <a href="https://github.com/brandonlukas/luminar2" rel="noopener">GitHub&nbsp;↗</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <!-- ———————————————— Hero ———————————————— -->
+      <section class="hero">
+        <h1 class="wordmark">Luminar</h1>
+        <p class="tagline">a study in vector&nbsp;fields</p>
+        <p class="lede">
+          A vector field hands every point in space an arrow. This page drops
+          thousands of weightless particles into such fields and lets them be
+          carried — through whirlpools and saddle points, around a strange
+          attractor, and through any dataset you drag onto this page. Five
+          specimens follow; after that, <a href="#observatory">the bench is yours</a>.
+        </p>
+        <figure class="plate-figure">
+          <div class="plate-canvas plate-clickable" id="hero-canvas" data-plate="hero"
+               title="Click to stir a new field"></div>
+          <figcaption>
+            <span class="spec">№&nbsp;0 · TURBULENCE · generated fresh for this visit</span>
+            <button class="stir" id="hero-stir">click to stir another ⟳</button>
+          </figcaption>
+        </figure>
+      </section>
+
+      <!-- ———————————————— 01 The idea ———————————————— -->
+      <section class="prose" id="idea">
+        <h2><span class="sec-num">01</span>The promise of an arrow</h2>
+        <p>
+          A vector field is one of the simplest promises mathematics makes:
+          <em>for every point, an arrow.</em> Weather maps make the promise
+          about wind. Ocean charts make it about current. A magnet makes it
+          about pull. Formally it is just a function — feed it a position
+          <span class="math">(x, y)</span>, receive a velocity
+          <span class="math">(dx, dy)</span> — but a formula on paper gives
+          you almost no feeling for what the flow <em>does</em>.
+        </p>
+        <p>
+          So we ask the field directly. Every dot you see is a massless
+          particle that, sixty times a second, asks <em>“where would you
+          carry me?”</em> and takes a small step along the answer. (Two asks
+          per step, actually — it peeks at the midpoint first, a scheme known
+          as the midpoint rule, which keeps orbits from slowly spiralling
+          where they shouldn't.) Color tracks speed: indigo for the drifters,
+          white-hot for the fastest. The trails are the field made visible —
+          where arrows agree, rivers form.
+        </p>
+        <p class="aside">
+          Nothing here is precomputed or filmed. Every frame, every particle
+          asks anew.
+        </p>
+      </section>
+
+      <!-- ———————————————— 02 Plates ———————————————— -->
+      <section id="plates">
+        <h2 class="plates-title"><span class="sec-num">02</span>Five specimens</h2>
+
+        <article class="plate">
+          <figure class="plate-figure">
+            <div class="plate-canvas" data-plate="vortex"></div>
+            <figcaption><span class="spec">PLATE&nbsp;I · VORTEX · two dimensions</span></figcaption>
+          </figure>
+          <div class="plate-text">
+            <h3><span class="plate-no">I</span>The Vortex</h3>
+            <p class="formula">v(x, y) = ω(r) · (−y, x) &emsp; ω(r) = 1.6 / (r² + 0.12)</p>
+            <p>
+              Everything orbits a single eye. Angular speed falls away with
+              distance, so the core turns like a merry-go-round while the rim
+              moves in slow procession — watch the ring of white heat where
+              the two tendencies trade places. This field is pure
+              <em>curl</em>: a paddle wheel dropped anywhere in it would
+              spin. Hurricanes, bathtub drains, and stirred coffee all keep a
+              copy of this plate at their center.
+            </p>
+          </div>
+        </article>
+
+        <article class="plate plate-flip">
+          <figure class="plate-figure">
+            <div class="plate-canvas" data-plate="dipole"></div>
+            <figcaption><span class="spec">PLATE&nbsp;II · DIPOLE · two dimensions</span></figcaption>
+          </figure>
+          <div class="plate-text">
+            <h3><span class="plate-no">II</span>The Dipole</h3>
+            <p class="formula">two mirrored vortices at (±0.45, 0), opposite spins</p>
+            <p>
+              Two eyes with opposite tempers. The left core turns one way,
+              the right the other, and between them they conspire to pump
+              fluid straight through the middle in a fast, narrow jet. This
+              is the secret of the smoke ring: a vortex pair (in 3D, a vortex
+              <em>loop</em>) propels itself forward on the very current it
+              creates. Notice how particles caught in the jet are launched,
+              slow at the fringes, and get folded back around for another pass.
+            </p>
+          </div>
+        </article>
+
+        <article class="plate">
+          <figure class="plate-figure">
+            <div class="plate-canvas" data-plate="saddle"></div>
+            <figcaption><span class="spec">PLATE&nbsp;III · SADDLE · two dimensions</span></figcaption>
+          </figure>
+          <div class="plate-text">
+            <h3><span class="plate-no">III</span>The Saddle</h3>
+            <p class="formula">v(x, y) = (x, −y)</p>
+            <p>
+              The origin is the loneliest place in this field. Flow rushes
+              toward it along the vertical, flees along the horizontal, and
+              at the exact center the velocity is zero — a <em>stagnation
+              point</em>. Particles approach forever and never quite arrive;
+              the ones that do come close are squeezed thin and flung wide.
+              Dynamics calls this the canonical unstable equilibrium: the
+              mountain pass of flows, where everything almost stops and
+              nothing stays.
+            </p>
+          </div>
+        </article>
+
+        <article class="plate plate-flip">
+          <figure class="plate-figure">
+            <div class="plate-canvas" data-plate="lorenz"></div>
+            <figcaption><span class="spec">PLATE&nbsp;IV · LORENZ · three dimensions · drag to orbit</span></figcaption>
+          </figure>
+          <div class="plate-text">
+            <h3><span class="plate-no">IV</span>The Lorenz Attractor</h3>
+            <p class="formula">ẋ = σ(y − x) &emsp; ẏ = x(ρ − z) − y &emsp; ż = xy − βz<br />σ = 10, ρ = 28, β = 8/3</p>
+            <p>
+              In 1963 Edward Lorenz boiled atmospheric convection down to
+              three equations and found weather's confession hiding inside:
+              a two-lobed orbit that never repeats and never escapes. Release
+              two particles a hair's width apart and they part ways within
+              seconds — the butterfly effect, live. The shape they can't
+              leave is a <em>strange attractor</em>. Drag it around; it has
+              no good side, only better ones.
+            </p>
+          </div>
+        </article>
+
+        <article class="plate">
+          <figure class="plate-figure">
+            <div class="plate-canvas" data-plate="abc"></div>
+            <figcaption><span class="spec">PLATE&nbsp;V · ABC FLOW · three dimensions · periodic · drag to orbit</span></figcaption>
+          </figure>
+          <div class="plate-text">
+            <h3><span class="plate-no">V</span>The ABC Flow</h3>
+            <p class="formula">ẋ = A sin z + C cos y &emsp; ẏ = B sin x + A cos z &emsp; ż = C sin y + B cos x<br />A = √3, B = √2, C = 1</p>
+            <p>
+              The Arnold–Beltrami–Childress flow is a favorite laboratory
+              animal of chaos theory: the velocity field itself is perfectly
+              smooth and periodic — a tidy trigonometric weave — yet the
+              paths of particles through it tangle chaotically. It is proof
+              that turbulent-looking motion needs no turbulent cause. The box
+              wraps like a pattern tile: leave through one face, re-enter
+              through the opposite.
+            </p>
+          </div>
+        </article>
+      </section>
+
+      <!-- ———————————————— 03 Data ———————————————— -->
+      <section class="prose" id="data">
+        <h2><span class="sec-num">03</span>Fields from data</h2>
+        <p>
+          Formulas are the exception. Real fields arrive as
+          <em>measurements</em>: anemometer readings, particle-image
+          velocimetry, ocean drifters, RNA-velocity estimates from
+          single-cell biology — a scatter of positions, each with a velocity
+          attached, and no formula in sight.
+        </p>
+        <p>
+          Luminar's rule for such data is deliberately honest: each particle
+          consults its <em>nearest measurement within a cutoff radius</em>.
+          Inside the radius, the data speaks. Beyond it, silence — particles
+          that wander past the last measurement quietly retire and respawn
+          where measurements exist. Nothing is invented across the gaps
+          (unless you ask: a <em>Smooth</em> toggle blends a handful of
+          neighbours instead of snapping to one — the cutoff still rules).
+        </p>
+        <p>
+          The format is one CSV row per measurement, with headers or without:
+        </p>
+        <p class="formula formula-block">
+          x, y, dx, dy &emsp;·&emsp; x, y, z, dx, dy, dz
+          <span class="formula-note">velocity columns may also be named u,v,w or vx,vy,vz — commas, tabs or semicolons, as you like</span>
+        </p>
+        <p>
+          Drop a file anywhere on this page, or start with ours:
+          <a href="#" id="sample-link">download the sample scatter</a>, or
+          <a href="#observatory" id="load-sample-link">load it straight into the observatory&nbsp;below&nbsp;↓</a>.
+          Your data never leaves the browser — there is no server to send it to.
+        </p>
+      </section>
+
+      <!-- ———————————————— Figures ———————————————— -->
+      <section class="figures" aria-label="measurements">
+        <div class="figures-grid">
+          <div class="figure">
+            <span class="figure-value" id="fig-bench">—</span>
+            <span class="figure-label">field samples per millisecond — benchmarked in your browser, just&nbsp;now</span>
+          </div>
+          <div class="figure">
+            <span class="figure-value">18,000</span>
+            <span class="figure-label">particles asking for directions, sixty times a second, by&nbsp;default</span>
+          </div>
+          <div class="figure">
+            <span class="figure-value">×2</span>
+            <span class="figure-label">field queries per particle per step — the midpoint rule earns its&nbsp;keep</span>
+          </div>
+          <div class="figure">
+            <span class="figure-value">0</span>
+            <span class="figure-label">bytes of your data uploaded anywhere. The physics lives entirely in this&nbsp;tab</span>
+          </div>
         </div>
-        <div class="stats" aria-label="live statistics">
-          <div class="stat"><span class="stat-label">Field</span><span class="stat-value" id="stat-field">—</span></div>
-          <div class="stat"><span class="stat-label">Data pts</span><span class="stat-value" id="stat-points">—</span></div>
-          <div class="stat"><span class="stat-label">Particles</span><span class="stat-value" id="stat-particles">—</span></div>
-          <div class="stat"><span class="stat-label">FPS</span><span class="stat-value" id="stat-fps">—</span></div>
-        </div>
-      </header>
+      </section>
 
-      <main>
-        <div id="viewport" aria-label="particle flow visualization"></div>
+      <!-- ———————————————— 04 Observatory ———————————————— -->
+      <section id="observatory">
+        <h2><span class="sec-num">04</span>The Observatory</h2>
+        <p class="obs-lede">
+          The bench. Choose a specimen or bring your own; every dial below is
+          live.
+        </p>
 
-        <aside id="panel">
-          <section class="panel-section">
-            <div class="section-head"><span class="section-num">01</span><h2>Field</h2></div>
-
-            <div class="preset-group" id="presets-2d" role="group" aria-label="2D presets">
-              <span class="group-label">Two-dimensional</span>
-              <button class="preset" data-preset="vortex">Vortex</button>
-              <button class="preset" data-preset="dipole">Dipole</button>
-              <button class="preset" data-preset="saddle">Saddle</button>
-              <button class="preset" data-preset="turbulence">Turbulence <span class="dice" aria-hidden="true">⟳</span></button>
+        <div class="obs">
+          <div class="obs-stage">
+            <div class="obs-statusbar" aria-label="live statistics">
+              <span><em>field</em> <span id="stat-field">—</span></span>
+              <span><em>data&nbsp;pts</em> <span id="stat-points">—</span></span>
+              <span><em>particles</em> <span id="stat-particles">—</span></span>
+              <span><em>fps</em> <span id="stat-fps">—</span></span>
             </div>
+            <div id="viewport" aria-label="particle flow visualization"></div>
+          </div>
 
-            <div class="preset-group" id="presets-3d" role="group" aria-label="3D presets">
-              <span class="group-label">Three-dimensional</span>
-              <button class="preset" data-preset="lorenz">Lorenz</button>
-              <button class="preset" data-preset="abc">ABC Flow</button>
-            </div>
+          <aside id="panel">
+            <section class="panel-section">
+              <div class="section-head"><span class="section-num">a</span><h3>Field</h3></div>
 
-            <div class="preset-group">
-              <span class="group-label">Your data</span>
-              <button class="preset" data-preset="upload" id="btn-uploaded" hidden>Uploaded CSV</button>
-              <button class="preset upload-btn" id="btn-upload">Upload CSV ↑</button>
-              <input type="file" id="file-input" accept=".csv,.txt,.tsv,text/csv" hidden />
-              <p class="hint">
-                Drop a CSV anywhere. Columns <code>x,y,dx,dy</code> or
-                <code>x,y,z,dx,dy,dz</code>. <a href="#" id="sample-link">Sample file ↓</a>
-              </p>
-            </div>
+              <div class="preset-group" role="group" aria-label="2D presets">
+                <span class="group-label">Two-dimensional</span>
+                <button class="preset" data-preset="vortex">Vortex</button>
+                <button class="preset" data-preset="dipole">Dipole</button>
+                <button class="preset" data-preset="saddle">Saddle</button>
+                <button class="preset" data-preset="turbulence">Turbulence <span class="dice" aria-hidden="true">⟳</span></button>
+              </div>
 
-            <div id="csv-controls" hidden>
+              <div class="preset-group" role="group" aria-label="3D presets">
+                <span class="group-label">Three-dimensional</span>
+                <button class="preset" data-preset="lorenz">Lorenz</button>
+                <button class="preset" data-preset="abc">ABC Flow</button>
+              </div>
+
+              <div class="preset-group">
+                <span class="group-label">Your data</span>
+                <button class="preset" data-preset="upload" id="btn-uploaded" hidden>Uploaded CSV</button>
+                <button class="preset upload-btn" id="btn-upload">Upload CSV ↑</button>
+                <button class="preset" id="btn-load-sample">Load sample scatter</button>
+                <input type="file" id="file-input" accept=".csv,.txt,.tsv,text/csv" hidden />
+                <p class="hint">
+                  or drop a file anywhere on the page —
+                  <code>x,y,dx,dy</code> or <code>x,y,z,dx,dy,dz</code>
+                </p>
+              </div>
+
+              <div id="csv-controls" hidden>
+                <label class="control">
+                  <span class="control-label">Cutoff radius <span class="control-value" id="val-cutoff"></span></span>
+                  <input type="range" id="ctl-cutoff" min="0.5" max="10" step="0.1" value="2.5" />
+                </label>
+                <label class="check">
+                  <input type="checkbox" id="ctl-idw" />
+                  <span>Smooth (blend nearby points)</span>
+                </label>
+              </div>
+            </section>
+
+            <section class="panel-section">
+              <div class="section-head"><span class="section-num">b</span><h3>Particles</h3></div>
               <label class="control">
-                <span class="control-label">Cutoff radius <span class="control-value" id="val-cutoff"></span></span>
-                <input type="range" id="ctl-cutoff" min="0.5" max="10" step="0.1" value="2.5" />
+                <span class="control-label">Count <span class="control-value" id="val-count"></span></span>
+                <input type="range" id="ctl-count" min="1000" max="60000" step="1000" value="18000" />
               </label>
-              <label class="check">
-                <input type="checkbox" id="ctl-idw" />
-                <span>Smooth (blend nearby points)</span>
+              <label class="control">
+                <span class="control-label">Speed <span class="control-value" id="val-speed"></span></span>
+                <input type="range" id="ctl-speed" min="0.1" max="3" step="0.05" value="1" />
               </label>
-            </div>
-          </section>
+              <label class="control">
+                <span class="control-label">Size <span class="control-value" id="val-size"></span></span>
+                <input type="range" id="ctl-size" min="0.3" max="3" step="0.05" value="1" />
+              </label>
+            </section>
 
-          <section class="panel-section">
-            <div class="section-head"><span class="section-num">02</span><h2>Particles</h2></div>
-            <label class="control">
-              <span class="control-label">Count <span class="control-value" id="val-count"></span></span>
-              <input type="range" id="ctl-count" min="1000" max="60000" step="1000" value="18000" />
-            </label>
-            <label class="control">
-              <span class="control-label">Speed <span class="control-value" id="val-speed"></span></span>
-              <input type="range" id="ctl-speed" min="0.1" max="3" step="0.05" value="1" />
-            </label>
-            <label class="control">
-              <span class="control-label">Size <span class="control-value" id="val-size"></span></span>
-              <input type="range" id="ctl-size" min="0.3" max="3" step="0.05" value="1" />
-            </label>
-          </section>
+            <section class="panel-section">
+              <div class="section-head"><span class="section-num">c</span><h3>Render</h3></div>
+              <label class="control">
+                <span class="control-label">Trails <span class="control-value" id="val-trails"></span></span>
+                <input type="range" id="ctl-trails" min="0" max="0.96" step="0.01" value="0.88" />
+              </label>
+              <label class="control">
+                <span class="control-label">Bloom <span class="control-value" id="val-bloom"></span></span>
+                <input type="range" id="ctl-bloom" min="0" max="2.5" step="0.05" value="0.8" />
+              </label>
+              <div class="button-row">
+                <button id="btn-pause" class="action">Pause</button>
+                <button id="btn-reseed" class="action">Reseed</button>
+              </div>
+              <p id="message" role="status"></p>
+            </section>
+          </aside>
+        </div>
+      </section>
+    </main>
 
-          <section class="panel-section">
-            <div class="section-head"><span class="section-num">03</span><h2>Render</h2></div>
-            <label class="control">
-              <span class="control-label">Trails <span class="control-value" id="val-trails"></span></span>
-              <input type="range" id="ctl-trails" min="0" max="0.96" step="0.01" value="0.86" />
-            </label>
-            <label class="control">
-              <span class="control-label">Bloom <span class="control-value" id="val-bloom"></span></span>
-              <input type="range" id="ctl-bloom" min="0" max="2.5" step="0.05" value="0.75" />
-            </label>
-            <div class="button-row">
-              <button id="btn-pause" class="action">Pause</button>
-              <button id="btn-reseed" class="action">Reseed</button>
-            </div>
-          </section>
+    <!-- ———————————————— Colophon ———————————————— -->
+    <footer class="colophon">
+      <p>
+        <strong>Luminar</strong> — a study in vector fields. Set in
+        <a href="https://fonts.google.com/specimen/Fraunces" rel="noopener">Fraunces</a> and
+        <a href="https://fonts.google.com/specimen/IBM+Plex+Mono" rel="noopener">IBM&nbsp;Plex&nbsp;Mono</a>;
+        drawn with <a href="https://threejs.org" rel="noopener">three.js</a>.
+        The page owes a debt to the playful documents of
+        <a href="https://elastiq.ch" rel="noopener">David&nbsp;Aerne</a>.
+        Source on <a href="https://github.com/brandonlukas/luminar2" rel="noopener">GitHub</a>.
+      </p>
+    </footer>
 
-          <footer class="panel-footer">
-            <p id="message" role="status"></p>
-            <p class="fineprint">Nearest-neighbour sampling within cutoff — flow renders only where data exists. Drag to orbit 3D fields; scroll to zoom.</p>
-          </footer>
-        </aside>
-      </main>
-
-      <div id="dropzone" hidden><div class="drop-inner">Drop CSV<span>x, y, dx, dy — position &amp; velocity per row</span></div></div>
-    </div>
+    <div id="dropzone" hidden><div class="drop-inner">Drop CSV<span>x, y, dx, dy — position &amp; velocity per row</span></div></div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

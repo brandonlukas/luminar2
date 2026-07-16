@@ -1,8 +1,11 @@
-# Luminar — Vector Field Observatory
+# Luminar — a study in vector fields
 
-Drag a CSV of scattered point-velocity samples onto the page and watch particles
-advect through the field, rendered with additive glow, motion trails, and bloom.
-Swiss-modernist chrome around a dark instrument.
+A scrolling atlas of vector fields — five annotated "plates" (vortex, dipole,
+saddle, Lorenz, ABC flow) with live particle advection, an essay on how fields
+work, and an observatory bench where you can drag in a CSV of scattered
+point-velocity samples and watch particles flow through your own data.
+Warm editorial paper (Fraunces + IBM Plex Mono) around dark glowing plates;
+the visual language owes a debt to David Aerne's playful documentation sites.
 
 ## Run
 

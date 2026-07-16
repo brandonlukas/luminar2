@@ -1,10 +1,96 @@
 import { FlowSim } from './sim.js';
-import { presets, csvField } from './fields.js';
+import { presets, csvField, vortexField } from './fields.js';
 import { parseCSV, generateSampleCSV } from './csv.js';
 
 const $ = (id) => document.getElementById(id);
 
-const sim = new FlowSim($('viewport'));
+// ————————————————————————————————————————————————
+// Plates: small sims that lazily boot when scrolled into view
+// and pause when they leave it.
+// ————————————————————————————————————————————————
+
+const PLATES = {
+  hero: { make: () => presets.turbulence(), particles: 10000 },
+  vortex: { make: () => presets.vortex(), particles: 8000 },
+  dipole: { make: () => presets.dipole(), particles: 8000 },
+  saddle: { make: () => presets.saddle(), particles: 8000 },
+  lorenz: { make: () => presets.lorenz(), particles: 9000, controls: 'rotate' },
+  abc: { make: () => presets.abc(), particles: 9000, controls: 'rotate' },
+};
+
+const plateSims = new Map();
+
+const plateObserver = new IntersectionObserver(
+  (entries) => {
+    for (const entry of entries) {
+      const el = entry.target;
+      const key = el.dataset.plate;
+      const def = PLATES[key];
+      let sim = plateSims.get(key);
+      if (entry.isIntersecting) {
+        if (!sim) {
+          sim = new FlowSim(el, {
+            controls: def.controls ?? 'none',
+            pixelRatio: 1.75,
+            trails: 0.88,
+            bloom: 0.8,
+          });
+          sim.setParticleCount(def.particles);
+          sim.setField(def.make());
+          plateSims.set(key, sim);
+        }
+        sim.running = true;
+      } else if (sim) {
+        sim.running = false;
+      }
+    }
+  },
+  { rootMargin: '160px 0px' }
+);
+
+document.querySelectorAll('.plate-canvas[data-plate]').forEach((el) => {
+  plateObserver.observe(el);
+});
+
+// Hero: click (or the caption button) rerolls the turbulence field.
+const stirHero = () => {
+  const sim = plateSims.get('hero');
+  if (sim) sim.setField(presets.turbulence());
+};
+$('hero-canvas').addEventListener('click', stirHero);
+$('hero-stir').addEventListener('click', stirHero);
+
+// ————————————————————————————————————————————————
+// Live benchmark figure: field samples per millisecond, right here.
+// ————————————————————————————————————————————————
+
+function runBenchmark() {
+  const field = vortexField();
+  const out = [0, 0, 0];
+  // warm-up, then measure
+  for (let i = 0; i < 20000; i++) field.sample(Math.random() * 2 - 1, Math.random() * 2 - 1, 0, out);
+  const N = 200000;
+  const t0 = performance.now();
+  for (let i = 0; i < N; i++) field.sample(Math.random() * 2 - 1, Math.random() * 2 - 1, 0, out);
+  const ms = performance.now() - t0;
+  const perMs = Math.round(N / ms);
+  $('fig-bench').textContent = perMs.toLocaleString('en-US');
+}
+
+if ('requestIdleCallback' in window) requestIdleCallback(runBenchmark);
+else setTimeout(runBenchmark, 2000);
+
+// ————————————————————————————————————————————————
+// The Observatory
+// ————————————————————————————————————————————————
+
+const obs = new FlowSim($('viewport'), { controls: 'full' });
+
+// Pause the big sim when it's offscreen too.
+new IntersectionObserver(
+  ([entry]) => { obs.running = entry.isIntersecting; },
+  { rootMargin: '160px 0px' }
+).observe($('viewport'));
 
 const statField = $('stat-field');
 const statPoints = $('stat-points');
@@ -12,12 +98,11 @@ const statParticles = $('stat-particles');
 const statFps = $('stat-fps');
 const message = $('message');
 
-sim.onStats = (fps) => {
+obs.onStats = (fps) => {
   statFps.textContent = String(fps);
 };
 
 let uploadedField = null;
-let activePreset = null;
 
 function say(text) {
   message.textContent = text;
@@ -28,8 +113,7 @@ function fmt(n) {
 }
 
 function activate(name, field) {
-  activePreset = name;
-  sim.setField(field);
+  obs.setField(field);
   statField.textContent = field.name;
   statPoints.textContent = field.isData ? fmt(field.count) : 'analytic';
   document.querySelectorAll('.preset[data-preset]').forEach((btn) => {
@@ -38,8 +122,6 @@ function activate(name, field) {
   $('csv-controls').hidden = !field.isData;
   if (field.isData) syncCutoffUI(field);
 }
-
-// ————— presets —————
 
 document.querySelectorAll('.preset[data-preset]').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -83,8 +165,10 @@ function loadCSVText(text, filename) {
     activate('upload', uploadedField);
     const note = data.skipped ? ` (${data.skipped} rows skipped)` : '';
     say(`Loaded ${fmt(data.count)} ${data.is3D ? '3D' : '2D'} points${note}.`);
+    $('observatory').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (err) {
     say(`Error: ${err.message}`);
+    $('observatory').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 }
 
@@ -99,6 +183,15 @@ $('btn-upload').addEventListener('click', () => $('file-input').click());
 $('file-input').addEventListener('change', (e) => {
   if (e.target.files[0]) loadFile(e.target.files[0]);
   e.target.value = '';
+});
+
+$('btn-load-sample').addEventListener('click', () => {
+  loadCSVText(generateSampleCSV(), 'sample scatter');
+});
+
+$('load-sample-link').addEventListener('click', () => {
+  // Anchor scrolls to the observatory; we also load the data.
+  loadCSVText(generateSampleCSV(), 'sample scatter');
 });
 
 // Drag & drop anywhere on the page
@@ -151,23 +244,23 @@ function bindSlider(id, valueId, apply, format = (v) => v.toFixed(2)) {
 }
 
 bindSlider('ctl-count', 'val-count', (v) => {
-  sim.setParticleCount(v);
+  obs.setParticleCount(v);
   statParticles.textContent = fmt(v);
 }, (v) => fmt(v));
 
-bindSlider('ctl-speed', 'val-speed', (v) => (sim.speed = v), (v) => `${v.toFixed(2)}×`);
-bindSlider('ctl-size', 'val-size', (v) => (sim.sizeParam = v), (v) => `${v.toFixed(2)}×`);
-bindSlider('ctl-trails', 'val-trails', (v) => sim.setTrails(v));
-bindSlider('ctl-bloom', 'val-bloom', (v) => sim.setBloom(v));
+bindSlider('ctl-speed', 'val-speed', (v) => (obs.speed = v), (v) => `${v.toFixed(2)}×`);
+bindSlider('ctl-size', 'val-size', (v) => (obs.sizeParam = v), (v) => `${v.toFixed(2)}×`);
+bindSlider('ctl-trails', 'val-trails', (v) => obs.setTrails(v));
+bindSlider('ctl-bloom', 'val-bloom', (v) => obs.setBloom(v));
 
 // ————— actions —————
 
 $('btn-pause').addEventListener('click', (e) => {
-  sim.paused = !sim.paused;
-  e.target.textContent = sim.paused ? 'Resume' : 'Pause';
+  obs.paused = !obs.paused;
+  e.target.textContent = obs.paused ? 'Resume' : 'Pause';
 });
 
-$('btn-reseed').addEventListener('click', () => sim.reseedAll());
+$('btn-reseed').addEventListener('click', () => obs.reseedAll());
 
 // ————— boot —————
 
