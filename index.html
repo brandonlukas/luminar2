@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Luminar — Vector Field Observatory</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23000'/%3E%3Crect x='4' y='4' width='8' height='8' fill='%23e30613'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header id="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <h1>Luminar</h1>
+          <span class="brand-sub">Vector Field Observatory</span>
+        </div>
+        <div class="stats" aria-label="live statistics">
+          <div class="stat"><span class="stat-label">Field</span><span class="stat-value" id="stat-field">—</span></div>
+          <div class="stat"><span class="stat-label">Data pts</span><span class="stat-value" id="stat-points">—</span></div>
+          <div class="stat"><span class="stat-label">Particles</span><span class="stat-value" id="stat-particles">—</span></div>
+          <div class="stat"><span class="stat-label">FPS</span><span class="stat-value" id="stat-fps">—</span></div>
+        </div>
+      </header>
+
+      <main>
+        <div id="viewport" aria-label="particle flow visualization"></div>
+
+        <aside id="panel">
+          <section class="panel-section">
+            <div class="section-head"><span class="section-num">01</span><h2>Field</h2></div>
+
+            <div class="preset-group" id="presets-2d" role="group" aria-label="2D presets">
+              <span class="group-label">Two-dimensional</span>
+              <button class="preset" data-preset="vortex">Vortex</button>
+              <button class="preset" data-preset="dipole">Dipole</button>
+              <button class="preset" data-preset="saddle">Saddle</button>
+              <button class="preset" data-preset="turbulence">Turbulence <span class="dice" aria-hidden="true">⟳</span></button>
+            </div>
+
+            <div class="preset-group" id="presets-3d" role="group" aria-label="3D presets">
+              <span class="group-label">Three-dimensional</span>
+              <button class="preset" data-preset="lorenz">Lorenz</button>
+              <button class="preset" data-preset="abc">ABC Flow</button>
+            </div>
+
+            <div class="preset-group">
+              <span class="group-label">Your data</span>
+              <button class="preset" data-preset="upload" id="btn-uploaded" hidden>Uploaded CSV</button>
+              <button class="preset upload-btn" id="btn-upload">Upload CSV ↑</button>
+              <input type="file" id="file-input" accept=".csv,.txt,.tsv,text/csv" hidden />
+              <p class="hint">
+                Drop a CSV anywhere. Columns <code>x,y,dx,dy</code> or
+                <code>x,y,z,dx,dy,dz</code>. <a href="#" id="sample-link">Sample file ↓</a>
+              </p>
+            </div>
+
+            <div id="csv-controls" hidden>
+              <label class="control">
+                <span class="control-label">Cutoff radius <span class="control-value" id="val-cutoff"></span></span>
+                <input type="range" id="ctl-cutoff" min="0.5" max="10" step="0.1" value="2.5" />
+              </label>
+              <label class="check">
+                <input type="checkbox" id="ctl-idw" />
+                <span>Smooth (blend nearby points)</span>
+              </label>
+            </div>
+          </section>
+
+          <section class="panel-section">
+            <div class="section-head"><span class="section-num">02</span><h2>Particles</h2></div>
+            <label class="control">
+              <span class="control-label">Count <span class="control-value" id="val-count"></span></span>
+              <input type="range" id="ctl-count" min="1000" max="60000" step="1000" value="18000" />
+            </label>
+            <label class="control">
+              <span class="control-label">Speed <span class="control-value" id="val-speed"></span></span>
+              <input type="range" id="ctl-speed" min="0.1" max="3" step="0.05" value="1" />
+            </label>
+            <label class="control">
+              <span class="control-label">Size <span class="control-value" id="val-size"></span></span>
+              <input type="range" id="ctl-size" min="0.3" max="3" step="0.05" value="1" />
+            </label>
+          </section>
+
+          <section class="panel-section">
+            <div class="section-head"><span class="section-num">03</span><h2>Render</h2></div>
+            <label class="control">
+              <span class="control-label">Trails <span class="control-value" id="val-trails"></span></span>
+              <input type="range" id="ctl-trails" min="0" max="0.96" step="0.01" value="0.86" />
+            </label>
+            <label class="control">
+              <span class="control-label">Bloom <span class="control-value" id="val-bloom"></span></span>
+              <input type="range" id="ctl-bloom" min="0" max="2.5" step="0.05" value="0.75" />
+            </label>
+            <div class="button-row">
+              <button id="btn-pause" class="action">Pause</button>
+              <button id="btn-reseed" class="action">Reseed</button>
+            </div>
+          </section>
+
+          <footer class="panel-footer">
+            <p id="message" role="status"></p>
+            <p class="fineprint">Nearest-neighbour sampling within cutoff — flow renders only where data exists. Drag to orbit 3D fields; scroll to zoom.</p>
+          </footer>
+        </aside>
+      </main>
+
+      <div id="dropzone" hidden><div class="drop-inner">Drop CSV<span>x, y, dx, dy — position &amp; velocity per row</span></div></div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
