@@ -5,6 +5,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
 const VERT = /* glsl */ `
   attribute float speed;
@@ -41,6 +42,79 @@ const FRAG = /* glsl */ `
     gl_FragColor = vec4(col * alpha, 1.0);
   }
 `;
+
+const LINE_VERT = /* glsl */ `
+  attribute float speed;
+  varying float vSpeed;
+  void main() {
+    vSpeed = speed;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const LINE_FRAG = /* glsl */ `
+  precision highp float;
+  varying float vSpeed;
+  uniform vec3 uColorSlow;
+  uniform vec3 uColorFast;
+  uniform float uIntensity;
+  void main() {
+    vec3 col = mix(uColorSlow, uColorFast, clamp(vSpeed, 0.0, 1.0));
+    gl_FragColor = vec4(col * uIntensity, 1.0);
+  }
+`;
+
+// Metaball threshold: fat gaussian sprites accumulate; a sharp smoothstep on
+// their summed luminance fuses neighbours into one gooey surface.
+const GooShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uLow: { value: 0.16 },
+    uHigh: { value: 0.3 },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float uLow;
+    uniform float uHigh;
+    varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      float l = max(c.r, max(c.g, c.b));
+      float m = smoothstep(uLow, uHigh, l);
+      vec3 base = c.rgb / max(l, 1e-4);
+      float body = 0.42 + 0.4 * smoothstep(uHigh, 1.4, l);
+      gl_FragColor = vec4(base * m * body, 1.0);
+    }
+  `,
+};
+
+// Ink: runs last, after tone mapping — luminance becomes pigment on paper.
+const InkShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uPaper: { value: null },
+    uInk: { value: null },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform vec3 uPaper;
+    uniform vec3 uInk;
+    varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      float l = clamp(max(c.r, max(c.g, c.b)), 0.0, 1.0);
+      gl_FragColor = vec4(mix(uPaper, uInk, l), 1.0);
+    }
+  `,
+};
 
 export class FlowSim {
   // opts.controls: 'full' (orbit/zoom/pan), 'rotate' (drag only — the page
@@ -85,17 +159,47 @@ export class FlowSim {
       blendSrc: THREE.OneFactor,
       blendDst: THREE.OneFactor,
     });
+    // Line material shares the point material's uniform objects.
+    this.lineMaterial = new THREE.ShaderMaterial({
+      vertexShader: LINE_VERT,
+      fragmentShader: LINE_FRAG,
+      uniforms: {
+        uColorSlow: this.material.uniforms.uColorSlow,
+        uColorFast: this.material.uniforms.uColorFast,
+        uIntensity: this.material.uniforms.uIntensity,
+      },
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      blending: THREE.CustomBlending,
+      blendSrc: THREE.OneFactor,
+      blendDst: THREE.OneFactor,
+    });
     this.points = null;
+    this.lines = null;
+    this.mode = 'points';
+    this.materialSize = 1;
+    this.materialSpeed = 1;
+    this.jitter = 0;
+    this._intensityScale = 1;
 
     this.composer = new EffectComposer(this.renderer);
     this.renderPass = new RenderPass(this.scene, new THREE.PerspectiveCamera());
     this.afterimagePass = new AfterimagePass(opts.trails ?? 0.9);
     this.trailDamp = opts.trails ?? 0.9;
     this.bloomPass = new UnrealBloomPass(new THREE.Vector2(2, 2), opts.bloom ?? 0.9, 0.65, 0.0);
+    this.gooPass = new ShaderPass(GooShader);
+    this.gooPass.enabled = false;
+    this.inkPass = new ShaderPass(InkShader);
+    this.inkPass.uniforms.uPaper.value = new THREE.Color('#faf3e7');
+    this.inkPass.uniforms.uInk.value = new THREE.Color('#1a1512');
+    this.inkPass.enabled = false;
     this.composer.addPass(this.renderPass);
     this.composer.addPass(this.afterimagePass);
+    this.composer.addPass(this.gooPass);
     this.composer.addPass(this.bloomPass);
     this.composer.addPass(new OutputPass());
+    this.composer.addPass(this.inkPass);
 
     // Simulation state
     this.field = null;
@@ -142,16 +246,22 @@ export class FlowSim {
 
   setParticleCount(n) {
     this.count = n;
-    // Keep accumulated brightness roughly constant as density changes.
-    this.material.uniforms.uIntensity.value = Math.min(0.9, (0.18 * 18000) / n);
+    this._applyIntensity();
     this.positions = new Float32Array(n * 3);
     this.speeds = new Float32Array(n);
     this.ages = new Float32Array(n);
     this.lives = new Float32Array(n);
+    // Segment buffers for line mode: (prev, curr) pair per particle.
+    this.segPositions = new Float32Array(n * 6);
+    this.segSpeeds = new Float32Array(n * 2);
 
     if (this.points) {
       this.scene.remove(this.points);
       this.points.geometry.dispose();
+    }
+    if (this.lines) {
+      this.scene.remove(this.lines);
+      this.lines.geometry.dispose();
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage));
@@ -160,7 +270,43 @@ export class FlowSim {
     this.points.frustumCulled = false;
     this.scene.add(this.points);
 
+    const lineGeo = new THREE.BufferGeometry();
+    lineGeo.setAttribute('position', new THREE.BufferAttribute(this.segPositions, 3).setUsage(THREE.DynamicDrawUsage));
+    lineGeo.setAttribute('speed', new THREE.BufferAttribute(this.segSpeeds, 1).setUsage(THREE.DynamicDrawUsage));
+    this.lines = new THREE.LineSegments(lineGeo, this.lineMaterial);
+    this.lines.frustumCulled = false;
+    this.scene.add(this.lines);
+
+    this._applyMode();
     if (this.field) this.reseedAll();
+  }
+
+  setMaterial(def) {
+    this.mode = def.mode;
+    this.materialSize = def.size;
+    this.materialSpeed = def.speed;
+    this.jitter = def.jitter ?? 0;
+    this._intensityScale = def.intensity;
+    this._applyIntensity();
+    const u = this.material.uniforms;
+    u.uColorSlow.value.setRGB(...def.colors[0]);
+    u.uColorFast.value.setRGB(...def.colors[1]);
+    this.gooPass.enabled = !!def.threshold;
+    this.inkPass.enabled = !!def.invert;
+    this.setTrails(def.trails);
+    this.setBloom(def.bloom);
+    this._applyMode();
+  }
+
+  _applyMode() {
+    if (this.points) this.points.visible = this.mode === 'points';
+    if (this.lines) this.lines.visible = this.mode === 'lines';
+  }
+
+  _applyIntensity() {
+    if (!this.count) return;
+    this.material.uniforms.uIntensity.value =
+      Math.min(0.9, (0.18 * 18000) / this.count) * this._intensityScale;
   }
 
   reseedAll() {
@@ -189,6 +335,14 @@ export class FlowSim {
     this.ages[i] = 0;
     this.lives[i] = 3 + Math.random() * 6;
     this.speeds[i] = 0;
+    // Collapse the particle's line segment so no streak spans the jump.
+    const s = this.segPositions;
+    if (s) {
+      s[i * 6] = s[i * 6 + 3] = this._spawn[0];
+      s[i * 6 + 1] = s[i * 6 + 4] = this._spawn[1];
+      s[i * 6 + 2] = s[i * 6 + 5] = this._spawn[2];
+      this.segSpeeds[i * 2] = this.segSpeeds[i * 2 + 1] = 0;
+    }
   }
 
   _setupCamera() {
@@ -301,11 +455,15 @@ export class FlowSim {
   _updateParticles(dt) {
     const f = this.field;
     const p = this.positions;
+    const seg = this.segPositions;
+    const segS = this.segSpeeds;
+    const lineMode = this.mode === 'lines';
     const v1 = this._v1;
     const v2 = this._v2;
     const b = f.bounds;
-    const scale = (this.speed * 0.14 * this.diag) / f.charSpeed;
+    const scale = (this.speed * this.materialSpeed * 0.14 * this.diag) / f.charSpeed;
     const charSpeed = f.charSpeed;
+    const jitter = this.jitter * charSpeed;
     const pad = this.diag * 0.03;
 
     for (let i = 0; i < this.count; i++) {
@@ -324,9 +482,17 @@ export class FlowSim {
       const my = y + v1[1] * h * 0.5;
       const mz = z + v1[2] * h * 0.5;
       const midOk = f.sample(mx, my, mz, v2);
-      const vx = midOk ? v2[0] : v1[0];
-      const vy = midOk ? v2[1] : v1[1];
-      const vz = midOk ? v2[2] : v1[2];
+      let vx = midOk ? v2[0] : v1[0];
+      let vy = midOk ? v2[1] : v1[1];
+      let vz = midOk ? v2[2] : v1[2];
+      if (jitter > 0) {
+        vx += (Math.random() - 0.5) * jitter;
+        vy += (Math.random() - 0.5) * jitter;
+        if (f.is3D) vz += (Math.random() - 0.5) * jitter;
+      }
+      const ox = x;
+      const oy = y;
+      const oz = z;
       x += vx * h;
       y += vy * h;
       z += vz * h;
@@ -359,17 +525,39 @@ export class FlowSim {
       p[ix] = x;
       p[ix + 1] = y;
       p[ix + 2] = z;
-      this.speeds[i] = Math.hypot(vx, vy, vz) / charSpeed;
+      const sp = Math.hypot(vx, vy, vz) / charSpeed;
+      this.speeds[i] = sp;
+
+      if (lineMode) {
+        const si = i * 6;
+        // A wrap teleports the particle — collapse that segment.
+        const jumped =
+          Math.abs(x - ox) > this.diag * 0.25 ||
+          Math.abs(y - oy) > this.diag * 0.25 ||
+          Math.abs(z - oz) > this.diag * 0.25;
+        seg[si] = jumped ? x : ox;
+        seg[si + 1] = jumped ? y : oy;
+        seg[si + 2] = jumped ? z : oz;
+        seg[si + 3] = x;
+        seg[si + 4] = y;
+        seg[si + 5] = z;
+        segS[i * 2] = sp;
+        segS[i * 2 + 1] = sp;
+      }
     }
 
     this.points.geometry.attributes.position.needsUpdate = true;
     this.points.geometry.attributes.speed.needsUpdate = true;
+    if (lineMode) {
+      this.lines.geometry.attributes.position.needsUpdate = true;
+      this.lines.geometry.attributes.speed.needsUpdate = true;
+    }
   }
 
   _updateUniforms() {
     const u = this.material.uniforms;
     const h = this.container.clientHeight || 2;
-    u.uWorldSize.value = this.sizeParam * this.diag * 0.0038;
+    u.uWorldSize.value = this.sizeParam * this.materialSize * this.diag * 0.0038;
     if (this.camera.isPerspectiveCamera) {
       u.uPersp.value = 1;
       u.uPerspFactor.value =

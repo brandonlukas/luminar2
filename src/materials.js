@@ -1,0 +1,67 @@
+// Substances: render styles orthogonal to the fields. One flow, many skins.
+// size/speed/intensity are multipliers layered under the user's sliders;
+// trails/bloom (and count, when present) are defaults pushed to the sliders
+// when a substance is chosen. Note the afterimage pass is a max-hold, not an
+// accumulator: trails keep a ghost at its original brightness, so per-frame
+// intensity is what sets exposure.
+
+export const MATERIALS = {
+  stardust: {
+    label: 'Stardust',
+    count: 18000,
+    mode: 'points',
+    size: 1,
+    intensity: 1,
+    speed: 1,
+    trails: 0.88,
+    bloom: 0.8,
+    colors: [[0.07, 0.22, 0.95], [1.0, 0.82, 0.55]],
+  },
+  silk: {
+    label: 'Silk',
+    count: 18000,
+    mode: 'lines',
+    size: 1,
+    intensity: 1.0,
+    speed: 0.8,
+    trails: 0.94,
+    bloom: 0.5,
+    colors: [[0.12, 0.32, 1.0], [1.0, 0.92, 0.7]],
+  },
+  goo: {
+    label: 'Goo',
+    mode: 'points',
+    size: 8,
+    intensity: 0.55,
+    speed: 0.5,
+    trails: 0.7,
+    bloom: 0.35,
+    count: 2000,
+    threshold: true,
+    colors: [[0.02, 0.3, 0.95], [0.25, 1.0, 0.55]],
+  },
+  plasma: {
+    label: 'Plasma',
+    count: 12000,
+    mode: 'points',
+    size: 1.6,
+    intensity: 0.75,
+    speed: 1.4,
+    trails: 0.93,
+    bloom: 1.3,
+    jitter: 0.6,
+    colors: [[0.75, 0.08, 0.02], [1.0, 0.85, 0.35]],
+  },
+  ink: {
+    label: 'Ink',
+    count: 18000,
+    mode: 'points',
+    size: 1.5,
+    intensity: 0.85,
+    speed: 0.9,
+    trails: 0.9,
+    bloom: 0.4,
+    invert: true,
+    colors: [[0.45, 0.45, 0.45], [1.15, 1.15, 1.15]],
+  },
+};

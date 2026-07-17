@@ -1,5 +1,6 @@
 import { FlowSim } from './sim.js';
 import { presets, csvField, vortexField } from './fields.js';
+import { MATERIALS } from './materials.js';
 import { parseCSV, generateSampleCSV } from './csv.js';
 
 const $ = (id) => document.getElementById(id);
@@ -10,12 +11,12 @@ const $ = (id) => document.getElementById(id);
 // ————————————————————————————————————————————————
 
 const PLATES = {
-  hero: { make: () => presets.turbulence(), particles: 10000 },
-  vortex: { make: () => presets.vortex(), particles: 8000 },
-  dipole: { make: () => presets.dipole(), particles: 8000 },
-  saddle: { make: () => presets.saddle(), particles: 8000 },
-  lorenz: { make: () => presets.lorenz(), particles: 9000, controls: 'rotate' },
-  abc: { make: () => presets.abc(), particles: 9000, controls: 'rotate' },
+  hero: { make: () => presets.turbulence(), particles: 10000, material: 'stardust' },
+  vortex: { make: () => presets.vortex(), particles: 5000, material: 'silk' },
+  dipole: { make: () => presets.dipole(), particles: 1600, material: 'goo' },
+  saddle: { make: () => presets.saddle(), particles: 8000, material: 'ink' },
+  lorenz: { make: () => presets.lorenz(), particles: 9000, controls: 'rotate', material: 'plasma' },
+  abc: { make: () => presets.abc(), particles: 5500, controls: 'rotate', material: 'silk' },
 };
 
 const plateSims = new Map();
@@ -36,6 +37,7 @@ const plateObserver = new IntersectionObserver(
             bloom: 0.8,
           });
           sim.setParticleCount(def.particles);
+          sim.setMaterial(MATERIALS[def.material ?? 'stardust']);
           sim.setField(def.make());
           plateSims.set(key, sim);
         }
@@ -253,6 +255,29 @@ bindSlider('ctl-size', 'val-size', (v) => (obs.sizeParam = v), (v) => `${v.toFix
 bindSlider('ctl-trails', 'val-trails', (v) => obs.setTrails(v));
 bindSlider('ctl-bloom', 'val-bloom', (v) => obs.setBloom(v));
 
+// ————— substance —————
+
+function setSubstance(name) {
+  const def = MATERIALS[name];
+  obs.setMaterial(def);
+  document.querySelectorAll('.substance[data-substance]').forEach((btn) => {
+    btn.setAttribute('aria-pressed', String(btn.dataset.substance === name));
+  });
+  // Push the substance's defaults into the sliders.
+  $('ctl-trails').value = String(def.trails);
+  $('val-trails').textContent = def.trails.toFixed(2);
+  $('ctl-bloom').value = String(def.bloom);
+  $('val-bloom').textContent = def.bloom.toFixed(2);
+  if (def.count) {
+    $('ctl-count').value = String(def.count);
+    $('ctl-count').dispatchEvent(new Event('input'));
+  }
+}
+
+document.querySelectorAll('.substance[data-substance]').forEach((btn) => {
+  btn.addEventListener('click', () => setSubstance(btn.dataset.substance));
+});
+
 // ————— actions —————
 
 $('btn-pause').addEventListener('click', (e) => {
@@ -264,4 +289,5 @@ $('btn-reseed').addEventListener('click', () => obs.reseedAll());
 
 // ————— boot —————
 
+setSubstance('stardust');
 activate('vortex', presets.vortex());
