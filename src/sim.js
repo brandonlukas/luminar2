@@ -98,6 +98,7 @@ const SPRITE_VERT = /* glsl */ `
   varying float vSpeed;
   varying float vPhase;
   varying float vAgeN;
+  varying vec3 vView;
   uniform float uLen;   // half-length in world units at speed 1
   uniform float uWidth; // half-width in world units
   uniform float uSpriteStyle;
@@ -132,6 +133,7 @@ const SPRITE_VERT = /* glsl */ `
       wid = uWidth;
     }
     mv.xyz += dir * position.x * len + perp * position.y * wid;
+    vView = mv.xyz;
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -142,12 +144,14 @@ const SPRITE_FRAG = /* glsl */ `
   varying float vSpeed;
   varying float vPhase;
   varying float vAgeN;
+  varying vec3 vView;
   uniform vec3 uColorSlow;
   uniform vec3 uColorFast;
   uniform float uIntensity;
   uniform float uSpriteStyle;
   uniform float uSpriteFade;
   uniform float uTime;
+  uniform float uWispFreq;
   uniform sampler2D uAtlas;
 
   float hash21(vec2 p) {
@@ -179,13 +183,20 @@ const SPRITE_FRAG = /* glsl */ `
     float lifeFade = mix(1.0, smoothstep(0.0, 0.1, vAgeN) * (1.0 - smoothstep(0.8, 1.0, vAgeN)), uSpriteFade);
 
     if (uSpriteStyle > 2.5) {
-      // wisp: a velocity-stretched puff torn apart by fractal noise
-      vec2 q = vCoord;
-      float env = exp(-q.x * q.x * 1.1 - q.y * q.y * 2.8);
-      vec2 np = q * vec2(2.2, 3.4) + vec2(vPhase * 61.3, vPhase * 17.7) + vec2(uTime * 0.12, -uTime * 0.05);
-      float wisp = smoothstep(0.38, 0.85, fbm(np) + env * 0.25);
+      // wisp: sprites are soft windows onto ONE world-anchored fog. The
+      // noise lives in world space, so interiors flow as sprites move and
+      // neighbours align seamlessly; domain warping makes the fog curl.
+      vec2 wp = vView.xy * uWispFreq;
+      float tt = uTime * 0.18;
+      float warp = fbm(wp * 0.7 + vec2(tt * 0.6, -tt * 0.4));
+      float n = fbm(wp + warp * 1.6 + vec2(-tt, tt * 0.5));
+      // elliptical falloff that reaches exactly zero well inside the quad
+      float d2 = vCoord.x * vCoord.x + vCoord.y * vCoord.y * 1.8;
+      float e = exp(-d2 * 2.2);
+      float env = max(0.0, (e - 0.11) / 0.89);
+      float dens = smoothstep(0.42, 0.72, n) * env;
       float fadeA = pow(max(0.0, sin(3.1416 * min(vAgeN, 1.0))), 1.3);
-      gl_FragColor = vec4(col * (env * wisp * fadeA * uIntensity), 1.0);
+      gl_FragColor = vec4(col * (dens * fadeA * uIntensity), 1.0);
       return;
     }
 
@@ -389,6 +400,7 @@ export class FlowSim {
         uSpriteStyle: { value: 0 },
         uSpriteFade: { value: 1 },
         uTime: this.material.uniforms.uTime,
+        uWispFreq: { value: 1 },
         uAtlas: { value: this.atlasTex },
       },
       transparent: true,
@@ -1140,6 +1152,7 @@ export class FlowSim {
     const su = this.spriteMaterial.uniforms;
     su.uLen.value = this.sizeParam * this.materialSize * this.diag * 0.011;
     su.uWidth.value = this.sizeParam * this.materialSize * this.diag * 0.0021;
+    su.uWispFreq.value = 9.0 / this.diag;
     this.linkMaterial.uniforms.uIntensity.value = this.material.uniforms.uIntensity.value * 0.12;
     if (this.camera.isPerspectiveCamera) {
       u.uPersp.value = 1;
