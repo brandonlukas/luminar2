@@ -57,15 +57,6 @@ a:hover { color: var(--accent); }
   letter-spacing: 0.01em;
 }
 
-.masthead-dot {
-  display: inline-block;
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  background: var(--accent);
-  margin-left: 5px;
-  vertical-align: super;
-}
-
 .masthead-nav {
   display: flex;
   gap: clamp(12px, 2.5vw, 32px);
@@ -81,12 +72,28 @@ a:hover { color: var(--accent); }
 main { display: block; }
 
 .hero {
-  padding: clamp(48px, 9vh, 110px) 5vw 0;
-  text-align: center;
+  padding: clamp(40px, 7vh, 90px) 5vw 0;
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: clamp(28px, 4vw, 64px);
+  align-items: center;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.hero-text { text-align: left; }
+
+@media (max-width: 980px) {
+  .hero-grid { grid-template-columns: 1fr; }
+  .hero-text { text-align: center; }
+  .hero-text .lede { text-align: left; }
 }
 
 .wordmark {
-  font-size: clamp(64px, 14vw, 190px);
+  font-size: clamp(56px, 8.5vw, 120px);
   font-weight: 380;
   font-variation-settings: "opsz" 144;
   letter-spacing: -0.015em;
@@ -103,12 +110,11 @@ main { display: block; }
 
 .lede {
   max-width: var(--measure);
-  margin: 36px auto 0;
+  margin: 24px auto 0;
   font-size: 17px;
-  text-align: left;
 }
 
-.hero .plate-figure { margin: 48px auto 0; max-width: 1060px; }
+.hero-figure { min-width: 0; }
 
 /* ————— Plates (shared canvas frame) ————— */
 

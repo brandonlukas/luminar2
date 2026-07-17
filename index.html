@@ -13,7 +13,7 @@
   </head>
   <body>
     <header class="masthead">
-      <a class="masthead-brand" href="#top">Luminar<span class="masthead-dot" aria-hidden="true"></span></a>
+      <a class="masthead-brand" href="#top">Luminar</a>
       <nav class="masthead-nav" aria-label="contents">
         <a href="#idea">The idea</a>
         <a href="#plates">Plates</a>
@@ -26,23 +26,28 @@
     <main id="top">
       <!-- ———————————————— Hero ———————————————— -->
       <section class="hero">
-        <h1 class="wordmark">Luminar</h1>
-        <p class="tagline">a study in vector&nbsp;fields</p>
-        <p class="lede">
-          A vector field hands every point in space an arrow. This page drops
-          thousands of weightless particles into such fields and lets them be
-          carried — through whirlpools and saddle points, around a strange
-          attractor, and through any dataset you drag onto this page. Six
-          specimens follow; after that, <a href="#observatory">the bench is yours</a>.
-        </p>
-        <figure class="plate-figure">
-          <div class="plate-canvas plate-clickable" id="hero-canvas" data-plate="hero"
-               title="Click to stir a new field"></div>
-          <figcaption>
-            <span class="spec">№&nbsp;0 · TURBULENCE · comets, in gusts · generated fresh for this visit</span>
-            <button class="stir" id="hero-stir">click to stir another ⟳</button>
-          </figcaption>
-        </figure>
+        <div class="hero-grid">
+          <div class="hero-text">
+            <h1 class="wordmark">Luminar</h1>
+            <p class="tagline">a study in vector&nbsp;fields</p>
+            <p class="lede">
+              A vector field hands every point in space an arrow. This page
+              drops thousands of weightless particles into such fields and
+              lets them be carried — through whirlpools and saddle points,
+              around a strange attractor, and through any dataset you drag
+              onto this page. Six specimens follow; after that,
+              <a href="#observatory">the bench is yours</a>.
+            </p>
+          </div>
+          <figure class="plate-figure hero-figure">
+            <div class="plate-canvas plate-clickable" id="hero-canvas" data-plate="hero"
+                 title="Click to stir a new field"></div>
+            <figcaption>
+              <span class="spec">№&nbsp;0 · TURBULENCE · comets, in gusts · generated fresh for this visit</span>
+              <button class="stir" id="hero-stir">click to stir another ⟳</button>
+            </figcaption>
+          </figure>
+        </div>
       </section>
 
       <!-- ———————————————— 01 The idea ———————————————— -->
@@ -268,6 +273,7 @@
               <span><em>data&nbsp;pts</em> <span id="stat-points">—</span></span>
               <span><em>particles</em> <span id="stat-particles">—</span></span>
               <span><em>fps</em> <span id="stat-fps">—</span></span>
+              <span><em>sim</em> <span id="stat-sim">—</span></span>
             </div>
             <div id="viewport" aria-label="particle flow visualization"></div>
           </div>
@@ -382,7 +388,9 @@
         <a href="https://fonts.google.com/specimen/IBM+Plex+Mono" rel="noopener">IBM&nbsp;Plex&nbsp;Mono</a>;
         drawn with <a href="https://threejs.org" rel="noopener">three.js</a>.
         The page owes a debt to the playful documents of
-        <a href="https://elastiq.ch" rel="noopener">David&nbsp;Aerne</a>.
+        <a href="https://elastiq.ch" rel="noopener">David&nbsp;Aerne</a>
+        and the poetic machines of
+        <a href="https://x.com/poetengineer__" rel="noopener">Kat, the&nbsp;Poet&nbsp;Engineer</a>.
         Source on <a href="https://github.com/brandonlukas/luminar2" rel="noopener">GitHub</a>.
       </p>
     </footer>

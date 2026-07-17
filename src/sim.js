@@ -7,7 +7,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
-// uStyle: 0 plain · 1 fireflies (blink) · 2 embers (cooling ramp) · 3 vapor (grow+thin)
+// uStyle: 0 plain · 1 fireflies (blink) · 2 embers (cooling ramp)
 const VERT = /* glsl */ `
   attribute float speed;
   attribute float aAgeN;
@@ -25,11 +25,10 @@ const VERT = /* glsl */ `
     vSpeed = speed;
     vAgeN = aAgeN;
     vPhase = aPhase;
-    float grow = uStyle > 2.5 ? (0.3 + 2.0 * clamp(aAgeN, 0.0, 1.0)) : 1.0;
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     float px = uPersp > 0.5
-      ? uWorldSize * grow * uPerspFactor / max(0.1, -mv.z)
-      : uWorldSize * grow * uPixPerUnit;
+      ? uWorldSize * uPerspFactor / max(0.1, -mv.z)
+      : uWorldSize * uPixPerUnit;
     gl_PointSize = clamp(px, 1.0, 96.0);
     gl_Position = projectionMatrix * mv;
   }
@@ -55,15 +54,11 @@ const FRAG = /* glsl */ `
       // fireflies: slow out-of-phase blinks over a faint body
       float pulse = pow(max(sin(uTime * 1.6 + vPhase * 6.2832), 0.0), 6.0);
       alpha *= 0.05 + 0.95 * pulse;
-    } else if (uStyle > 1.5 && uStyle < 2.5) {
+    } else if (uStyle > 1.5) {
       // embers: age is a cooling clock — white to amber to dull red to dark
       float t = clamp(vAgeN, 0.0, 1.0);
       col = vec3(1.0, 0.95 * pow(1.0 - t, 1.6), 0.85 * pow(1.0 - t, 3.5));
       alpha *= 1.0 - t * t;
-    } else if (uStyle > 2.5) {
-      // vapor: puffs thin out as they grow
-      float t = clamp(vAgeN, 0.0, 1.0);
-      alpha *= pow(max(0.0, sin(3.1416 * min(t * 1.05, 1.0))), 1.5);
     }
     alpha *= uIntensity;
     // Blending is ONE,ONE: color carries all the energy.
@@ -98,30 +93,38 @@ const SPRITE_VERT = /* glsl */ `
   attribute vec3 aVel;
   attribute float aSpeed;
   attribute float aSPhase;
+  attribute float aAgeN;
   varying vec2 vCoord;
   varying float vSpeed;
   varying float vPhase;
+  varying float vAgeN;
   uniform float uLen;   // half-length in world units at speed 1
   uniform float uWidth; // half-width in world units
   uniform float uSpriteStyle;
+  uniform float uSpriteFade; // 0 for frozen substances (filings)
 
   void main() {
     vCoord = position.xy;
     vSpeed = aSpeed;
     vPhase = aSPhase;
+    vAgeN = aAgeN;
     vec4 mv = modelViewMatrix * vec4(aPos, 1.0);
     vec3 vdir = (modelViewMatrix * vec4(aVel, 0.0)).xyz;
     float vlen = length(vdir);
     vec3 dir = vlen > 1e-6 ? vdir / vlen : vec3(1.0, 0.0, 0.0);
     vec3 perp = normalize(vec3(-dir.y, dir.x, 1e-4));
+    float lf = mix(1.0, smoothstep(0.0, 0.1, aAgeN) * (1.0 - smoothstep(0.8, 1.0, aAgeN)), uSpriteFade);
     float len;
     float wid;
-    if (uSpriteStyle > 1.5) {          // glyphs: square, unstretched
+    if (uSpriteStyle > 2.5) {          // wisp: grows and stretches with age
+      len = uLen * (0.8 + 0.9 * clamp(aAgeN, 0.0, 1.0));
+      wid = uLen * (0.45 + 0.5 * clamp(aAgeN, 0.0, 1.0));
+    } else if (uSpriteStyle > 1.5) {   // glyphs: square, unstretched
       len = uLen;
       wid = uLen;
     } else if (uSpriteStyle > 0.5) {   // fish: mild stretch, plump body,
-      // per-fish scale for a near/far depth illusion
-      float sc = mix(0.55, 1.6, fract(aSPhase * 3.77));
+      // per-fish scale for a near/far depth illusion; fading fish shrink
+      float sc = mix(0.55, 1.6, fract(aSPhase * 3.77)) * (0.4 + 0.6 * lf);
       len = uLen * sc * (0.75 + 0.45 * clamp(aSpeed, 0.0, 1.0));
       wid = uWidth * 3.4 * sc;
     } else {                            // comet: speed-stretched streak
@@ -138,22 +141,60 @@ const SPRITE_FRAG = /* glsl */ `
   varying vec2 vCoord;
   varying float vSpeed;
   varying float vPhase;
+  varying float vAgeN;
   uniform vec3 uColorSlow;
   uniform vec3 uColorFast;
   uniform float uIntensity;
   uniform float uSpriteStyle;
+  uniform float uSpriteFade;
   uniform float uTime;
   uniform sampler2D uAtlas;
 
+  float hash21(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+  float vnoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(hash21(i), hash21(i + vec2(1.0, 0.0)), u.x),
+      mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), u.x),
+      u.y);
+  }
+  float fbm(vec2 p) {
+    float a = 0.5;
+    float s = 0.0;
+    for (int k = 0; k < 3; k++) {
+      s += a * vnoise(p);
+      p *= 2.13;
+      a *= 0.5;
+    }
+    return s;
+  }
+
   void main() {
     vec3 col = mix(uColorSlow, uColorFast, clamp(vSpeed, 0.0, 1.0));
+    // gentle fade in/out over each particle's life (frozen substances skip it)
+    float lifeFade = mix(1.0, smoothstep(0.0, 0.1, vAgeN) * (1.0 - smoothstep(0.8, 1.0, vAgeN)), uSpriteFade);
+
+    if (uSpriteStyle > 2.5) {
+      // wisp: a velocity-stretched puff torn apart by fractal noise
+      vec2 q = vCoord;
+      float env = exp(-q.x * q.x * 1.1 - q.y * q.y * 2.8);
+      vec2 np = q * vec2(2.2, 3.4) + vec2(vPhase * 61.3, vPhase * 17.7) + vec2(uTime * 0.12, -uTime * 0.05);
+      float wisp = smoothstep(0.38, 0.85, fbm(np) + env * 0.25);
+      float fadeA = pow(max(0.0, sin(3.1416 * min(vAgeN, 1.0))), 1.3);
+      gl_FragColor = vec4(col * (env * wisp * fadeA * uIntensity), 1.0);
+      return;
+    }
 
     if (uSpriteStyle > 1.5) {
       // glyph from the atlas; the quad's velocity alignment rotates it
       float cell = floor(fract(vPhase * 7.31) * 8.0);
       vec2 uv = vec2((cell + vCoord.x * 0.5 + 0.5) / 8.0, vCoord.y * 0.5 + 0.5);
       float a = texture2D(uAtlas, uv).a;
-      gl_FragColor = vec4(col * a * uIntensity, 1.0);
+      gl_FragColor = vec4(col * a * uIntensity * lifeFade, 1.0);
       return;
     }
 
@@ -186,7 +227,7 @@ const SPRITE_FRAG = /* glsl */ `
       float rim = 1.0 - smoothstep(0.0, 0.10, bodyw - abs(yy));
       base *= 1.0 - 0.45 * rim * body;
       base *= 0.75 + 0.4 * clamp(vSpeed, 0.0, 1.0);
-      gl_FragColor = vec4(base * m * uIntensity, 1.0);
+      gl_FragColor = vec4(base * m * uIntensity * lifeFade, 1.0);
       return;
     }
 
@@ -196,7 +237,7 @@ const SPRITE_FRAG = /* glsl */ `
     float lat = vCoord.y / env;
     float body = max(0.0, 1.0 - lat * lat);
     float shape = smoothstep(0.0, 0.3, t) * (1.0 - smoothstep(0.88, 1.0, t));
-    float alpha = body * body * shape * (0.3 + 0.7 * t) * uIntensity;
+    float alpha = body * body * shape * (0.3 + 0.7 * t) * uIntensity * lifeFade;
     gl_FragColor = vec4(col * alpha, 1.0);
   }
 `;
@@ -346,6 +387,7 @@ export class FlowSim {
         uLen: { value: 1 },
         uWidth: { value: 1 },
         uSpriteStyle: { value: 0 },
+        uSpriteFade: { value: 1 },
         uTime: this.material.uniforms.uTime,
         uAtlas: { value: this.atlasTex },
       },
@@ -536,6 +578,7 @@ export class FlowSim {
     spriteGeo.setAttribute('aVel', new THREE.InstancedBufferAttribute(this.vels, 3).setUsage(THREE.DynamicDrawUsage));
     spriteGeo.setAttribute('aSpeed', new THREE.InstancedBufferAttribute(this.speeds, 1).setUsage(THREE.DynamicDrawUsage));
     spriteGeo.setAttribute('aSPhase', new THREE.InstancedBufferAttribute(this.phases, 1));
+    spriteGeo.setAttribute('aAgeN', new THREE.InstancedBufferAttribute(this.agesN, 1).setUsage(THREE.DynamicDrawUsage));
     this.sprites = new THREE.Mesh(spriteGeo, this.spriteMaterial);
     this.sprites.frustumCulled = false;
     this.scene.add(this.sprites);
@@ -600,6 +643,7 @@ export class FlowSim {
     u.uColorFast.value.setRGB(...def.colors[1]);
     u.uStyle.value = def.style ?? 0;
     this.spriteMaterial.uniforms.uSpriteStyle.value = def.spriteStyle ?? 0;
+    this.spriteMaterial.uniforms.uSpriteFade.value = def.frozen ? 0 : 1;
     this.inkPass.enabled = !!def.invert;
     this.setTrails(def.trails);
     this.setBloom(def.bloom);
@@ -982,6 +1026,7 @@ export class FlowSim {
       a.aPos.needsUpdate = true;
       a.aVel.needsUpdate = true;
       a.aSpeed.needsUpdate = true;
+      a.aAgeN.needsUpdate = true;
     }
     if (this.showLinks) this._updateLinks();
     if (this.showBubbles) this._updateBubbles(dt, scale, charSpeed);
@@ -1117,9 +1162,15 @@ export class FlowSim {
     this._fpsAcc += dt;
     this._fpsFrames++;
     if (this._fpsAcc >= 0.5) {
-      if (this.onStats) this.onStats(Math.round(this._fpsFrames / this._fpsAcc));
+      if (this.onStats) {
+        this.onStats(
+          Math.round(this._fpsFrames / this._fpsAcc),
+          (this._simMsAcc ?? 0) / Math.max(1, this._fpsFrames)
+        );
+      }
       this._fpsAcc = 0;
       this._fpsFrames = 0;
+      this._simMsAcc = 0;
     }
 
     if (!this.field || !this.points) return;
@@ -1127,8 +1178,10 @@ export class FlowSim {
     this._time += dt;
     this.material.uniforms.uTime.value = this._time;
     if (this.controls) this.controls.update();
+    const simT0 = performance.now();
     if (this.field.update && !this.paused && dt > 0) this.field.update(dt);
     if (!this.paused && dt > 0) this._updateParticles(dt);
+    this._simMsAcc = (this._simMsAcc ?? 0) + (performance.now() - simT0);
     this._updateUniforms();
     this.composer.render();
 

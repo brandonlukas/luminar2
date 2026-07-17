@@ -102,8 +102,10 @@ const statParticles = $('stat-particles');
 const statFps = $('stat-fps');
 const message = $('message');
 
-obs.onStats = (fps) => {
+const statSim = $('stat-sim');
+obs.onStats = (fps, simMs) => {
   statFps.textContent = String(fps);
+  statSim.textContent = `${simMs.toFixed(1)} ms`;
 };
 
 let uploadedField = null;
@@ -270,9 +272,15 @@ function setSubstance(name) {
   $('val-trails').textContent = def.trails.toFixed(2);
   $('ctl-bloom').value = String(def.bloom);
   $('val-bloom').textContent = def.bloom.toFixed(2);
+  // Each substance gets a count range that makes sense for it.
+  const [cMin, cMax, cStep] = def.countRange ?? [1000, 60000, 1000];
+  const slider = $('ctl-count');
+  slider.min = String(cMin);
+  slider.max = String(cMax);
+  slider.step = String(cStep);
   if (def.count) {
-    $('ctl-count').value = String(def.count);
-    $('ctl-count').dispatchEvent(new Event('input'));
+    slider.value = String(def.count);
+    slider.dispatchEvent(new Event('input'));
   }
 }
 
