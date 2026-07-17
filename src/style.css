@@ -72,7 +72,12 @@ a:hover { color: var(--accent); }
 main { display: block; }
 
 .hero {
-  padding: clamp(40px, 7vh, 90px) 5vw 0;
+  /* one full screen below the masthead: the wordmark and the living
+     plate are the whole opening frame; the essay begins on scroll */
+  min-height: calc(100svh - 52px);
+  display: flex;
+  flex-direction: column;
+  padding: 24px 5vw 14px;
 }
 
 .hero-grid {
@@ -80,9 +85,23 @@ main { display: block; }
   grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
   gap: clamp(28px, 4vw, 64px);
   align-items: center;
+  width: 100%;
   max-width: 1280px;
-  margin: 0 auto;
+  margin: auto;
 }
+
+.scroll-cue {
+  align-self: center;
+  margin-top: 18px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  text-decoration: none;
+}
+
+.scroll-cue:hover { color: var(--accent); }
 
 .hero-text { text-align: left; }
 

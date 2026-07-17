@@ -87,7 +87,7 @@ export const MATERIALS = {
     intensity: 0.3,
     speed: 0.55,
     trails: 0.45,
-    bloom: 0.5,
+    bloom: 0.3,
     lifeScale: 1.3,
     colors: [[0.5, 0.58, 0.72], [0.78, 0.84, 0.98]],
   },
