@@ -760,9 +760,12 @@ export class FlowSim {
     const c = this._clusters[(Math.random() * this._clusters.length) | 0];
     const sigma = this.diag * 0.038;
     const g = () => (Math.random() + Math.random() + Math.random() - 1.5) * 1.4 * sigma;
-    out[0] = c.p[0] + g();
-    out[1] = c.p[1] + g();
-    out[2] = this.field.is3D ? c.p[2] + g() : 0;
+    const bb = this.field.bounds;
+    out[0] = Math.min(bb.max[0], Math.max(bb.min[0], c.p[0] + g()));
+    out[1] = Math.min(bb.max[1], Math.max(bb.min[1], c.p[1] + g()));
+    out[2] = this.field.is3D
+      ? Math.min(bb.max[2], Math.max(bb.min[2], c.p[2] + g()))
+      : 0;
   }
 
   _respawn(i) {
@@ -951,7 +954,28 @@ export class FlowSim {
       let z = p[ix + 2];
 
       if (!f.sample(x, y, z, v1)) {
-        this._respawn(i);
+        // No field data here (past a CSV cutoff, outside the fluid box):
+        // dissolve in place via the fade-out window instead of blinking.
+        this.ages[i] = Math.max(this.ages[i], this.lives[i] * 0.8) + dt;
+        if (this.ages[i] > this.lives[i]) {
+          this._respawn(i);
+          continue;
+        }
+        this.speeds[i] *= 0.92;
+        this.agesN[i] = this.ages[i] / this.lives[i];
+        if (spriteMode) {
+          vels[ix] *= 0.92;
+          vels[ix + 1] *= 0.92;
+          vels[ix + 2] *= 0.92;
+        }
+        if (lineMode) {
+          const si = i * 6;
+          seg[si] = seg[si + 3] = x;
+          seg[si + 1] = seg[si + 4] = y;
+          seg[si + 2] = seg[si + 5] = z;
+          segS[i * 2] = segS[i * 2 + 1] = this.speeds[i];
+          this.segAges[i * 2] = this.segAges[i * 2 + 1] = this.agesN[i];
+        }
         continue;
       }
       // RK2 midpoint step
@@ -994,8 +1018,16 @@ export class FlowSim {
         x < b.min[0] - pad || x > b.max[0] + pad ||
         y < b.min[1] - pad || y > b.max[1] + pad ||
         (f.is3D && (z < b.min[2] - pad || z > b.max[2] + pad));
+      // Leaving the frame starts the fade-out; the particle keeps flying
+      // while it dissolves. Only truly distant runaways get hard-culled.
+      if (out) this.ages[i] = Math.max(this.ages[i], this.lives[i] * 0.8);
+      const far = this.diag * 0.5;
+      const gone =
+        x < b.min[0] - far || x > b.max[0] + far ||
+        y < b.min[1] - far || y > b.max[1] + far ||
+        (f.is3D && (z < b.min[2] - far || z > b.max[2] + far));
 
-      if (this.ages[i] > this.lives[i] || out) {
+      if (this.ages[i] > this.lives[i] || gone) {
         this._respawn(i);
         continue;
       }
@@ -1070,7 +1102,8 @@ export class FlowSim {
         x < b.min[0] - pad || x > b.max[0] + pad ||
         y < b.min[1] - pad || y > b.max[1] + pad ||
         (f.is3D && (z < b.min[2] - pad || z > b.max[2] + pad));
-      if (this.bAge[i] > this.bLife[i] || out) {
+      if (out) this.bAge[i] = Math.max(this.bAge[i], this.bLife[i] * 0.85);
+      if (this.bAge[i] > this.bLife[i]) {
         const j = (Math.random() * this.count) | 0;
         const jr = this.diag * 0.015;
         x = this.positions[j * 3] + (Math.random() - 0.5) * jr;
