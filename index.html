@@ -39,7 +39,7 @@
           <div class="plate-canvas plate-clickable" id="hero-canvas" data-plate="hero"
                title="Click to stir a new field"></div>
           <figcaption>
-            <span class="spec">№&nbsp;0 · TURBULENCE · substance: comets · generated fresh for this visit</span>
+            <span class="spec">№&nbsp;0 · TURBULENCE · comets, in gusts · generated fresh for this visit</span>
             <button class="stir" id="hero-stir">click to stir another ⟳</button>
           </figcaption>
         </figure>
@@ -100,7 +100,7 @@
         <article class="plate plate-flip">
           <figure class="plate-figure">
             <div class="plate-canvas" data-plate="dipole"></div>
-            <figcaption><span class="spec">PLATE&nbsp;II · DIPOLE · substance: goo</span></figcaption>
+            <figcaption><span class="spec">PLATE&nbsp;II · DIPOLE · substance: comets</span></figcaption>
           </figure>
           <div class="plate-text">
             <h3><span class="plate-no">II</span>The Dipole</h3>
@@ -317,11 +317,14 @@
               <div class="substance-grid" role="group" aria-label="render substance">
                 <button class="substance" data-substance="stardust">Stardust</button>
                 <button class="substance" data-substance="silk">Silk</button>
-                <button class="substance" data-substance="goo">Goo</button>
                 <button class="substance" data-substance="comets">Comets</button>
                 <button class="substance" data-substance="plasma">Plasma</button>
                 <button class="substance" data-substance="ink">Ink</button>
               </div>
+              <label class="check gusts-check">
+                <input type="checkbox" id="ctl-gusts" />
+                <span>Gusts (spawn in drifting bursts)</span>
+              </label>
             </section>
 
             <section class="panel-section">

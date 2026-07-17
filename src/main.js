@@ -11,9 +11,9 @@ const $ = (id) => document.getElementById(id);
 // ————————————————————————————————————————————————
 
 const PLATES = {
-  hero: { make: () => presets.turbulence(), particles: 2500, material: 'comets' },
+  hero: { make: () => presets.turbulence(), particles: 2500, material: 'comets', gusts: true },
   vortex: { make: () => presets.vortex(), particles: 5000, material: 'silk' },
-  dipole: { make: () => presets.dipole(), particles: 900, material: 'goo' },
+  dipole: { make: () => presets.dipole(), particles: 4000, material: 'comets' },
   saddle: { make: () => presets.saddle(), particles: 8000, material: 'ink' },
   lorenz: { make: () => presets.lorenz(), particles: 9000, controls: 'rotate', material: 'plasma' },
   abc: { make: () => presets.abc(), particles: 9000, controls: 'rotate', material: 'stardust' },
@@ -38,6 +38,7 @@ const plateObserver = new IntersectionObserver(
           });
           sim.setParticleCount(def.particles);
           sim.setMaterial(MATERIALS[def.material ?? 'stardust']);
+          if (def.gusts) sim.setGusts(true);
           sim.setField(def.make());
           plateSims.set(key, sim);
         }
@@ -286,6 +287,8 @@ $('btn-pause').addEventListener('click', (e) => {
 });
 
 $('btn-reseed').addEventListener('click', () => obs.reseedAll());
+
+$('ctl-gusts').addEventListener('change', (e) => obs.setGusts(e.target.checked));
 
 // ————— boot —————
 

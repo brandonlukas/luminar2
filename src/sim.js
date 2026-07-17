@@ -108,34 +108,6 @@ const SPRITE_FRAG = /* glsl */ `
   }
 `;
 
-// Metaball threshold: fat gaussian sprites accumulate; a sharp smoothstep on
-// their summed luminance fuses neighbours into one gooey surface.
-const GooShader = {
-  uniforms: {
-    tDiffuse: { value: null },
-    uLow: { value: 0.16 },
-    uHigh: { value: 0.3 },
-  },
-  vertexShader: /* glsl */ `
-    varying vec2 vUv;
-    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
-  `,
-  fragmentShader: /* glsl */ `
-    uniform sampler2D tDiffuse;
-    uniform float uLow;
-    uniform float uHigh;
-    varying vec2 vUv;
-    void main() {
-      vec4 c = texture2D(tDiffuse, vUv);
-      float l = max(c.r, max(c.g, c.b));
-      float m = smoothstep(uLow, uHigh, l);
-      vec3 base = c.rgb / max(l, 1e-4);
-      float body = 0.42 + 0.4 * smoothstep(uHigh, 1.4, l);
-      gl_FragColor = vec4(base * m * body, 1.0);
-    }
-  `,
-};
-
 // Ink: runs last, after tone mapping — luminance becomes pigment on paper.
 const InkShader = {
   uniforms: {
@@ -254,15 +226,12 @@ export class FlowSim {
     this.afterimagePass = new AfterimagePass(opts.trails ?? 0.9);
     this.trailDamp = opts.trails ?? 0.9;
     this.bloomPass = new UnrealBloomPass(new THREE.Vector2(2, 2), opts.bloom ?? 0.9, 0.65, 0.0);
-    this.gooPass = new ShaderPass(GooShader);
-    this.gooPass.enabled = false;
     this.inkPass = new ShaderPass(InkShader);
     this.inkPass.uniforms.uPaper.value = new THREE.Color('#faf3e7');
     this.inkPass.uniforms.uInk.value = new THREE.Color('#1a1512');
     this.inkPass.enabled = false;
     this.composer.addPass(this.renderPass);
     this.composer.addPass(this.afterimagePass);
-    this.composer.addPass(this.gooPass);
     this.composer.addPass(this.bloomPass);
     this.composer.addPass(new OutputPass());
     this.composer.addPass(this.inkPass);
@@ -371,20 +340,20 @@ export class FlowSim {
     this.materialSpeed = def.speed;
     this.jitter = def.jitter ?? 0;
     this.lifeScale = def.lifeScale ?? 1;
-    this.clustered = !!def.clustered;
-    this.clusterSigma = def.clusterSigma;
-    this.clusterCount = def.clusterCount;
-    this._clusters = [];
     this._intensityScale = def.intensity;
     this._applyIntensity();
     const u = this.material.uniforms;
     u.uColorSlow.value.setRGB(...def.colors[0]);
     u.uColorFast.value.setRGB(...def.colors[1]);
-    this.gooPass.enabled = !!def.threshold;
     this.inkPass.enabled = !!def.invert;
     this.setTrails(def.trails);
     this.setBloom(def.bloom);
     this._applyMode();
+  }
+
+  setGusts(on) {
+    this.clustered = on;
+    this._clusters = [];
   }
 
   _applyMode() {
@@ -421,7 +390,7 @@ export class FlowSim {
   // the flow shears each clump into a flock before it disperses.
   _clusterSpawn(out) {
     if (this._clusters.length === 0) {
-      const K = this.clusterCount ?? 7;
+      const K = 8;
       for (let k = 0; k < K; k++) {
         const p = [0, 0, 0];
         this.field.spawn(p);
@@ -429,7 +398,7 @@ export class FlowSim {
       }
     }
     const c = this._clusters[(Math.random() * this._clusters.length) | 0];
-    const sigma = this.diag * (this.clusterSigma ?? 0.022);
+    const sigma = this.diag * 0.038;
     const g = () => (Math.random() + Math.random() + Math.random() - 1.5) * 1.4 * sigma;
     out[0] = c.p[0] + g();
     out[1] = c.p[1] + g();

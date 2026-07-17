@@ -4,12 +4,13 @@ A scrolling atlas of vector fields — five annotated "plates" (vortex, dipole,
 saddle, Lorenz, ABC flow) with live particle advection, an essay on how fields
 work, and an observatory bench where you can drag in a CSV of scattered
 point-velocity samples and watch particles flow through your own data.
-Six render substances skin the same flow: stardust (fine additive grains),
-silk (continuous streamline threads), goo (clustered metaballs that merge and
-split like liquid), comets (velocity-oriented spark strokes spawned in flocks),
-plasma (hot, jittering, bloom-heavy), and ink (a duotone pass that prints the
-flow as dark pigment on the paper). Clustered substances respawn particles in
-bursts around drifting seeds, so the flow shears each clump into a swarm.
+Five render substances skin the same flow: stardust (fine additive grains),
+silk (continuous streamline threads), comets (velocity-oriented spark strokes
+with bright heads and tapering tails), plasma (hot, jittering, bloom-heavy),
+and ink (a duotone pass that prints the flow as dark pigment on the paper).
+An orthogonal Gusts toggle respawns particles in short-lived bursts around
+drifting seed points, so any substance blows through in transient swarms —
+like watching a breeze instead of a steady wind.
 Warm editorial paper (Fraunces + IBM Plex Mono) around dark glowing plates;
 the visual language owes a debt to David Aerne's playful documentation sites.
 
