@@ -331,7 +331,6 @@ export class FlowSim {
     this.materialSize = 1;
     this.materialSpeed = 1;
     this.jitter = 0;
-    this.buoyancy = 0;
     this.lifeScale = 1;
     this.clustered = false;
     this.frozen = false;
@@ -498,7 +497,6 @@ export class FlowSim {
     this.materialSize = def.size;
     this.materialSpeed = def.speed;
     this.jitter = def.jitter ?? 0;
-    this.buoyancy = def.buoyancy ?? 0;
     this.lifeScale = def.lifeScale ?? 1;
     this.frozen = !!def.frozen;
     this.showLinks = !!def.links;
@@ -759,7 +757,6 @@ export class FlowSim {
     const scale = (this.speed * this.materialSpeed * 0.14 * this.diag) / f.charSpeed;
     const charSpeed = f.charSpeed;
     const jitter = this.jitter * charSpeed;
-    const buoy = this.buoyancy * charSpeed;
     const pad = this.diag * 0.03;
     const spriteMode = this.mode === 'sprites';
     const vels = this.vels;
@@ -815,10 +812,6 @@ export class FlowSim {
         vx += (Math.random() - 0.5) * jitter;
         vy += (Math.random() - 0.5) * jitter;
         if (f.is3D) vz += (Math.random() - 0.5) * jitter;
-      }
-      if (buoy > 0) {
-        if (f.is3D) vz += buoy;
-        else vy += buoy;
       }
       const ox = x;
       const oy = y;

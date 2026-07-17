@@ -72,7 +72,6 @@ export const MATERIALS = {
     size: 1.3,
     intensity: 0.5,
     speed: 0.8,
-    buoyancy: 0.5,
     lifeScale: 0.55,
     trails: 0.6,
     bloom: 0.9,
