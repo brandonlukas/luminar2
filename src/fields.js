@@ -215,6 +215,154 @@ export function abcField() {
   });
 }
 
+// ————— The Fluid: a live Navier–Stokes solver (Stam stable fluids) —————
+// Unlike every other field, this one evolves: sim calls update(dt) each
+// frame and stir(x, y, dx, dy) on pointer moves. Particles just sample it.
+
+export function fluidField() {
+  const N = 112;
+  const S = N + 2;
+  const u = new Float32Array(S * S);
+  const v = new Float32Array(S * S);
+  const u0 = new Float32Array(S * S);
+  const v0 = new Float32Array(S * S);
+  const IX = (i, j) => i + S * j;
+  const bounds = { min: [-1, -1, 0], max: [1, 1, 0] };
+
+  function setBnd(b, x) {
+    for (let i = 1; i <= N; i++) {
+      x[IX(0, i)] = b === 1 ? -x[IX(1, i)] : x[IX(1, i)];
+      x[IX(N + 1, i)] = b === 1 ? -x[IX(N, i)] : x[IX(N, i)];
+      x[IX(i, 0)] = b === 2 ? -x[IX(i, 1)] : x[IX(i, 1)];
+      x[IX(i, N + 1)] = b === 2 ? -x[IX(i, N)] : x[IX(i, N)];
+    }
+    x[IX(0, 0)] = 0.5 * (x[IX(1, 0)] + x[IX(0, 1)]);
+    x[IX(0, N + 1)] = 0.5 * (x[IX(1, N + 1)] + x[IX(0, N)]);
+    x[IX(N + 1, 0)] = 0.5 * (x[IX(N, 0)] + x[IX(N + 1, 1)]);
+    x[IX(N + 1, N + 1)] = 0.5 * (x[IX(N, N + 1)] + x[IX(N + 1, N)]);
+  }
+
+  function project() {
+    const div = u0;
+    const p = v0;
+    for (let j = 1; j <= N; j++) {
+      for (let i = 1; i <= N; i++) {
+        div[IX(i, j)] = -0.5 * (u[IX(i + 1, j)] - u[IX(i - 1, j)] + v[IX(i, j + 1)] - v[IX(i, j - 1)]) / N;
+        p[IX(i, j)] = 0;
+      }
+    }
+    setBnd(0, div);
+    setBnd(0, p);
+    for (let k = 0; k < 14; k++) {
+      for (let j = 1; j <= N; j++) {
+        for (let i = 1; i <= N; i++) {
+          p[IX(i, j)] = (div[IX(i, j)] + p[IX(i - 1, j)] + p[IX(i + 1, j)] + p[IX(i, j - 1)] + p[IX(i, j + 1)]) / 4;
+        }
+      }
+      setBnd(0, p);
+    }
+    for (let j = 1; j <= N; j++) {
+      for (let i = 1; i <= N; i++) {
+        u[IX(i, j)] -= 0.5 * N * (p[IX(i + 1, j)] - p[IX(i - 1, j)]);
+        v[IX(i, j)] -= 0.5 * N * (p[IX(i, j + 1)] - p[IX(i, j - 1)]);
+      }
+    }
+    setBnd(1, u);
+    setBnd(2, v);
+  }
+
+  function advect(b, d, d0, du, dv, dt) {
+    const dt0 = dt * N * 0.5; // world span is 2 units across N cells
+    for (let j = 1; j <= N; j++) {
+      for (let i = 1; i <= N; i++) {
+        let x = i - dt0 * du[IX(i, j)];
+        let y = j - dt0 * dv[IX(i, j)];
+        x = Math.max(0.5, Math.min(N + 0.5, x));
+        y = Math.max(0.5, Math.min(N + 0.5, y));
+        const i0 = x | 0;
+        const j0 = y | 0;
+        const s1 = x - i0;
+        const t1 = y - j0;
+        d[IX(i, j)] =
+          (1 - s1) * ((1 - t1) * d0[IX(i0, j0)] + t1 * d0[IX(i0, j0 + 1)]) +
+          s1 * ((1 - t1) * d0[IX(i0 + 1, j0)] + t1 * d0[IX(i0 + 1, j0 + 1)]);
+      }
+    }
+    setBnd(b, d);
+  }
+
+  function splat(wx, wy, dx, dy) {
+    const ci = Math.max(3, Math.min(N - 2, ((wx + 1) / 2) * N | 0));
+    const cj = Math.max(3, Math.min(N - 2, ((wy + 1) / 2) * N | 0));
+    for (let j = -2; j <= 2; j++) {
+      for (let i = -2; i <= 2; i++) {
+        const f = Math.exp(-(i * i + j * j) / 3.5);
+        const id = IX(ci + i, cj + j);
+        u[id] = Math.max(-2.5, Math.min(2.5, u[id] + dx * f));
+        v[id] = Math.max(-2.5, Math.min(2.5, v[id] + dy * f));
+      }
+    }
+  }
+
+  let T = 0;
+  let lastUser = -1e9;
+
+  const field = {
+    name: 'The Fluid',
+    is3D: false,
+    bounds,
+    charSpeed: 0.45,
+    spawn: uniformSpawner(bounds),
+
+    stir(wx, wy, dx, dy) {
+      lastUser = T;
+      splat(wx, wy, dx * 30, dy * 30);
+    },
+
+    update(dt) {
+      T += dt;
+      const step = Math.min(dt, 0.033);
+      // Idle stirrer keeps the plate alive until the visitor takes over.
+      if (T - lastUser > 3) {
+        const ax = Math.sin(T * 0.5) * Math.sin(T * 0.23 + 1.7) * 0.62;
+        const ay = Math.sin(T * 0.37 + 0.4) * 0.55;
+        splat(ax, ay, Math.cos(T * 0.9) * 0.5, Math.sin(T * 0.7) * 0.5);
+      }
+      u0.set(u);
+      v0.set(v);
+      advect(1, u, u0, u0, v0, step);
+      advect(2, v, v0, u0, v0, step);
+      project();
+      // gentle global decay so a stirred storm eventually settles
+      for (let k = 0; k < u.length; k++) {
+        u[k] *= 0.999;
+        v[k] *= 0.999;
+      }
+    },
+
+    sample(x, y, _z, out) {
+      if (x < -1 || x > 1 || y < -1 || y > 1) return false;
+      let fx = ((x + 1) / 2) * N + 0.5;
+      let fy = ((y + 1) / 2) * N + 0.5;
+      fx = Math.max(1, Math.min(N, fx));
+      fy = Math.max(1, Math.min(N, fy));
+      const i0 = fx | 0;
+      const j0 = fy | 0;
+      const s1 = fx - i0;
+      const t1 = fy - j0;
+      out[0] =
+        (1 - s1) * ((1 - t1) * u[IX(i0, j0)] + t1 * u[IX(i0, j0 + 1)]) +
+        s1 * ((1 - t1) * u[IX(i0 + 1, j0)] + t1 * u[IX(i0 + 1, j0 + 1)]);
+      out[1] =
+        (1 - s1) * ((1 - t1) * v[IX(i0, j0)] + t1 * v[IX(i0, j0 + 1)]) +
+        s1 * ((1 - t1) * v[IX(i0 + 1, j0)] + t1 * v[IX(i0 + 1, j0 + 1)]);
+      out[2] = 0;
+      return true;
+    },
+  };
+  return field;
+}
+
 // ————— CSV data field: nearest neighbour within a cutoff radius —————
 
 // Dense CSR grid over the data bounding box: cell lookup is pure index
@@ -511,4 +659,5 @@ export const presets = {
   turbulence: turbulenceField,
   lorenz: lorenzField,
   abc: abcField,
+  fluid: fluidField,
 };

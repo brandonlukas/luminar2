@@ -7,21 +7,30 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
+// uStyle: 0 plain · 1 fireflies (blink) · 2 embers (cooling ramp) · 3 vapor (grow+thin)
 const VERT = /* glsl */ `
   attribute float speed;
+  attribute float aAgeN;
+  attribute float aPhase;
   varying float vSpeed;
+  varying float vAgeN;
+  varying float vPhase;
   uniform float uWorldSize;   // point diameter in world units
   uniform float uPixPerUnit;  // orthographic pixels per world unit
   uniform float uPerspFactor; // h_px / (2 tan(fov/2))
   uniform float uPersp;       // 1 = perspective camera
+  uniform float uStyle;
 
   void main() {
     vSpeed = speed;
+    vAgeN = aAgeN;
+    vPhase = aPhase;
+    float grow = uStyle > 2.5 ? (0.3 + 2.0 * clamp(aAgeN, 0.0, 1.0)) : 1.0;
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     float px = uPersp > 0.5
-      ? uWorldSize * uPerspFactor / max(0.1, -mv.z)
-      : uWorldSize * uPixPerUnit;
-    gl_PointSize = clamp(px, 1.0, 64.0);
+      ? uWorldSize * grow * uPerspFactor / max(0.1, -mv.z)
+      : uWorldSize * grow * uPixPerUnit;
+    gl_PointSize = clamp(px, 1.0, 96.0);
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -29,17 +38,71 @@ const VERT = /* glsl */ `
 const FRAG = /* glsl */ `
   precision highp float;
   varying float vSpeed;
+  varying float vAgeN;
+  varying float vPhase;
+  uniform vec3 uColorSlow;
+  uniform vec3 uColorFast;
+  uniform float uIntensity;
+  uniform float uStyle;
+  uniform float uTime;
+
+  void main() {
+    float d = length(gl_PointCoord - 0.5);
+    float alpha = smoothstep(0.5, 0.0, d);
+    alpha *= alpha;
+    vec3 col = mix(uColorSlow, uColorFast, clamp(vSpeed, 0.0, 1.0));
+    if (uStyle > 0.5 && uStyle < 1.5) {
+      // fireflies: slow out-of-phase blinks over a faint body
+      float pulse = pow(max(sin(uTime * 1.6 + vPhase * 6.2832), 0.0), 6.0);
+      alpha *= 0.05 + 0.95 * pulse;
+    } else if (uStyle > 1.5 && uStyle < 2.5) {
+      // embers: age is a cooling clock — white to amber to dull red to dark
+      float t = clamp(vAgeN, 0.0, 1.0);
+      col = vec3(1.0, 0.95 * pow(1.0 - t, 1.6), 0.85 * pow(1.0 - t, 3.5));
+      alpha *= 1.0 - t * t;
+    } else if (uStyle > 2.5) {
+      // vapor: puffs thin out as they grow
+      float t = clamp(vAgeN, 0.0, 1.0);
+      alpha *= pow(max(0.0, sin(3.1416 * min(t * 1.05, 1.0))), 1.5);
+    }
+    alpha *= uIntensity;
+    // Blending is ONE,ONE: color carries all the energy.
+    gl_FragColor = vec4(col * alpha, 1.0);
+  }
+`;
+
+const RIBBON_VERT = /* glsl */ `
+  attribute vec3 aTan;
+  attribute float aSide;
+  attribute float aT;
+  attribute float aSpeed;
+  varying float vSpeed;
+  varying float vT;
+  uniform float uRibbonWidth;
+
+  void main() {
+    vSpeed = aSpeed;
+    vT = aT;
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vec3 tv = (modelViewMatrix * vec4(aTan, 0.0)).xyz;
+    float tl = length(tv.xy);
+    vec2 perp = tl > 1e-6 ? vec2(-tv.y, tv.x) / tl : vec2(1.0, 0.0);
+    mv.xy += perp * aSide * uRibbonWidth * (0.25 + 0.75 * aT);
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+
+const RIBBON_FRAG = /* glsl */ `
+  precision highp float;
+  varying float vSpeed;
+  varying float vT;
   uniform vec3 uColorSlow;
   uniform vec3 uColorFast;
   uniform float uIntensity;
 
   void main() {
-    float d = length(gl_PointCoord - 0.5);
-    float alpha = smoothstep(0.5, 0.0, d);
-    alpha *= alpha * uIntensity;
     vec3 col = mix(uColorSlow, uColorFast, clamp(vSpeed, 0.0, 1.0));
-    // Blending is ONE,ONE: color carries all the energy.
-    gl_FragColor = vec4(col * alpha, 1.0);
+    gl_FragColor = vec4(col * (vT * uIntensity), 1.0);
   }
 `;
 
@@ -64,25 +127,41 @@ const LINE_FRAG = /* glsl */ `
   }
 `;
 
+// uSpriteStyle: 0 comet teardrop · 1 fish (procedural koi, tail wiggle) · 2 glyph atlas
 const SPRITE_VERT = /* glsl */ `
   attribute vec3 aPos;
   attribute vec3 aVel;
   attribute float aSpeed;
+  attribute float aSPhase;
   varying vec2 vCoord;
   varying float vSpeed;
+  varying float vPhase;
   uniform float uLen;   // half-length in world units at speed 1
   uniform float uWidth; // half-width in world units
+  uniform float uSpriteStyle;
 
   void main() {
     vCoord = position.xy;
     vSpeed = aSpeed;
+    vPhase = aSPhase;
     vec4 mv = modelViewMatrix * vec4(aPos, 1.0);
     vec3 vdir = (modelViewMatrix * vec4(aVel, 0.0)).xyz;
     float vlen = length(vdir);
     vec3 dir = vlen > 1e-6 ? vdir / vlen : vec3(1.0, 0.0, 0.0);
     vec3 perp = normalize(vec3(-dir.y, dir.x, 1e-4));
-    float len = uLen * (0.3 + clamp(aSpeed, 0.0, 1.6));
-    mv.xyz += dir * position.x * len + perp * position.y * uWidth;
+    float len;
+    float wid;
+    if (uSpriteStyle > 1.5) {          // glyphs: square, unstretched
+      len = uLen;
+      wid = uLen;
+    } else if (uSpriteStyle > 0.5) {   // fish: mild stretch, plump body
+      len = uLen * (0.75 + 0.45 * clamp(aSpeed, 0.0, 1.0));
+      wid = uWidth * 3.4;
+    } else {                            // comet: speed-stretched streak
+      len = uLen * (0.3 + clamp(aSpeed, 0.0, 1.6));
+      wid = uWidth;
+    }
+    mv.xyz += dir * position.x * len + perp * position.y * wid;
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -91,29 +170,65 @@ const SPRITE_FRAG = /* glsl */ `
   precision highp float;
   varying vec2 vCoord;
   varying float vSpeed;
+  varying float vPhase;
   uniform vec3 uColorSlow;
   uniform vec3 uColorFast;
   uniform float uIntensity;
+  uniform float uSpriteStyle;
+  uniform float uTime;
+  uniform sampler2D uAtlas;
 
   void main() {
-    // x: -1 tail .. +1 head. Teardrop: wide bright head, tapering tail.
+    vec3 col = mix(uColorSlow, uColorFast, clamp(vSpeed, 0.0, 1.0));
+
+    if (uSpriteStyle > 1.5) {
+      // glyph from the atlas; the quad's velocity alignment rotates it
+      float cell = floor(fract(vPhase * 7.31) * 8.0);
+      vec2 uv = vec2((cell + vCoord.x * 0.5 + 0.5) / 8.0, vCoord.y * 0.5 + 0.5);
+      float a = texture2D(uAtlas, uv).a;
+      gl_FragColor = vec4(col * a * uIntensity, 1.0);
+      return;
+    }
+
+    if (uSpriteStyle > 0.5) {
+      // procedural koi: head at +x, swimming wiggle grows toward the tail
+      float xx = vCoord.x;
+      float tailw = 1.0 - (xx * 0.5 + 0.5);
+      float yy = vCoord.y + sin(uTime * 6.0 + vPhase * 6.2832 + xx * 2.4) * 0.3 * tailw;
+      float bodyw = 0.6 * sqrt(max(0.0, (1.0 - xx) * (xx + 0.45) / 0.75));
+      float body = xx > -0.45 ? smoothstep(0.07, -0.05, abs(yy) - bodyw) : 0.0;
+      float finw = 0.6 * (-xx - 0.3);
+      float fin = xx < -0.3 ? smoothstep(0.06, -0.06, abs(yy) - finw) : 0.0;
+      float m = max(body, fin * 0.85);
+      // koi palette: per-fish blend orange↔gold, pale belly, speed shimmer
+      vec3 koiA = vec3(1.0, 0.42, 0.06);
+      vec3 koiB = vec3(1.0, 0.83, 0.28);
+      vec3 base = mix(koiA, koiB, fract(vPhase * 5.17));
+      base = mix(base, vec3(1.0, 0.96, 0.88), smoothstep(0.0, 0.7, -yy) * 0.4);
+      base *= 0.6 + 0.55 * clamp(vSpeed, 0.0, 1.0);
+      gl_FragColor = vec4(base * m * uIntensity, 1.0);
+      return;
+    }
+
+    // comet teardrop: wide bright head, tapering tail
     float t = vCoord.x * 0.5 + 0.5;
     float env = mix(0.18, 1.0, t);
     float lat = vCoord.y / env;
     float body = max(0.0, 1.0 - lat * lat);
     float shape = smoothstep(0.0, 0.3, t) * (1.0 - smoothstep(0.88, 1.0, t));
     float alpha = body * body * shape * (0.3 + 0.7 * t) * uIntensity;
-    vec3 col = mix(uColorSlow, uColorFast, clamp(vSpeed, 0.0, 1.0));
     gl_FragColor = vec4(col * alpha, 1.0);
   }
 `;
 
-// Ink: runs last, after tone mapping — luminance becomes pigment on paper.
+// Ink/watercolor: runs last, after tone mapping. Mode 1 maps luminance to
+// duotone pigment; mode 2 treats light as absorbance — colored washes.
 const InkShader = {
   uniforms: {
     tDiffuse: { value: null },
     uPaper: { value: null },
     uInk: { value: null },
+    uMode: { value: 1 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -123,11 +238,16 @@ const InkShader = {
     uniform sampler2D tDiffuse;
     uniform vec3 uPaper;
     uniform vec3 uInk;
+    uniform float uMode;
     varying vec2 vUv;
     void main() {
       vec4 c = texture2D(tDiffuse, vUv);
-      float l = clamp(max(c.r, max(c.g, c.b)), 0.0, 1.0);
-      gl_FragColor = vec4(mix(uPaper, uInk, l), 1.0);
+      if (uMode > 1.5) {
+        gl_FragColor = vec4(uPaper * exp(-c.rgb * 2.8), 1.0);
+      } else {
+        float l = clamp(max(c.r, max(c.g, c.b)), 0.0, 1.0);
+        gl_FragColor = vec4(mix(uPaper, uInk, l), 1.0);
+      }
     }
   `,
 };
@@ -167,6 +287,8 @@ export class FlowSim {
         uColorSlow: { value: new THREE.Color(0.07, 0.22, 0.95) },
         uColorFast: { value: new THREE.Color(1.0, 0.82, 0.55) },
         uIntensity: { value: 0.18 },
+        uStyle: { value: 0 },
+        uTime: { value: 0 },
       },
       transparent: true,
       depthWrite: false,
@@ -191,6 +313,21 @@ export class FlowSim {
       blendSrc: THREE.OneFactor,
       blendDst: THREE.OneFactor,
     });
+    // Glyph atlas: 8 symbols drawn once into a canvas texture. The sprite
+    // quad's velocity alignment rotates them — arrows point downstream free.
+    const atlas = document.createElement('canvas');
+    atlas.width = 512;
+    atlas.height = 64;
+    const actx = atlas.getContext('2d');
+    actx.fillStyle = '#fff';
+    actx.font = '46px ui-monospace, Menlo, monospace';
+    actx.textAlign = 'center';
+    actx.textBaseline = 'middle';
+    ['→', '▸', '△', '＋', '≈', '✳', '◦', '·'].forEach((ch, i) => {
+      actx.fillText(ch, i * 64 + 32, 34);
+    });
+    this.atlasTex = new THREE.CanvasTexture(atlas);
+
     this.spriteMaterial = new THREE.ShaderMaterial({
       vertexShader: SPRITE_VERT,
       fragmentShader: SPRITE_FRAG,
@@ -200,6 +337,9 @@ export class FlowSim {
         uIntensity: this.material.uniforms.uIntensity,
         uLen: { value: 1 },
         uWidth: { value: 1 },
+        uSpriteStyle: { value: 0 },
+        uTime: this.material.uniforms.uTime,
+        uAtlas: { value: this.atlasTex },
       },
       transparent: true,
       depthWrite: false,
@@ -209,17 +349,57 @@ export class FlowSim {
       blendSrc: THREE.OneFactor,
       blendDst: THREE.OneFactor,
     });
+    this.ribbonMaterial = new THREE.ShaderMaterial({
+      vertexShader: RIBBON_VERT,
+      fragmentShader: RIBBON_FRAG,
+      uniforms: {
+        uColorSlow: this.material.uniforms.uColorSlow,
+        uColorFast: this.material.uniforms.uColorFast,
+        uIntensity: this.material.uniforms.uIntensity,
+        uRibbonWidth: { value: 1 },
+      },
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      side: THREE.DoubleSide,
+      blending: THREE.CustomBlending,
+      blendSrc: THREE.OneFactor,
+      blendDst: THREE.OneFactor,
+    });
+    // Constellation links get their own (dimmer) intensity.
+    this.linkMaterial = new THREE.ShaderMaterial({
+      vertexShader: LINE_VERT,
+      fragmentShader: LINE_FRAG,
+      uniforms: {
+        uColorSlow: this.material.uniforms.uColorSlow,
+        uColorFast: this.material.uniforms.uColorFast,
+        uIntensity: { value: 0.3 },
+      },
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      blending: THREE.CustomBlending,
+      blendSrc: THREE.OneFactor,
+      blendDst: THREE.OneFactor,
+    });
     this.points = null;
     this.lines = null;
     this.sprites = null;
+    this.ribbons = null;
+    this.links = null;
     this.mode = 'points';
     this.materialSize = 1;
     this.materialSpeed = 1;
     this.jitter = 0;
+    this.buoyancy = 0;
     this.lifeScale = 1;
     this.clustered = false;
+    this.frozen = false;
+    this.showLinks = false;
     this._clusters = [];
     this._intensityScale = 1;
+    this._time = 0;
+    this._stirPrev = null;
 
     this.composer = new EffectComposer(this.renderer);
     this.renderPass = new RenderPass(this.scene, new THREE.PerspectiveCamera());
@@ -258,6 +438,24 @@ export class FlowSim {
     this._observer.observe(container);
     this._resize();
 
+    // Stirrable fields (field.stir) take the pointer.
+    const el = this.renderer.domElement;
+    const onStir = (e) => {
+      const f = this.field;
+      if (!f || !f.stir || !this.camera || this.camera.isPerspectiveCamera) return;
+      const r = el.getBoundingClientRect();
+      const nx = ((e.clientX - r.left) / r.width) * 2 - 1;
+      const ny = -(((e.clientY - r.top) / r.height) * 2 - 1);
+      const w = new THREE.Vector3(nx, ny, 0).unproject(this.camera);
+      if (this._stirPrev) {
+        f.stir(w.x, w.y, w.x - this._stirPrev.x, w.y - this._stirPrev.y);
+      }
+      this._stirPrev = { x: w.x, y: w.y };
+    };
+    el.addEventListener('pointermove', onStir);
+    el.addEventListener('pointerdown', onStir);
+    el.addEventListener('pointerleave', () => { this._stirPrev = null; });
+
     this._loop = this._loop.bind(this);
     requestAnimationFrame(this._loop);
   }
@@ -286,6 +484,9 @@ export class FlowSim {
     this.speeds = new Float32Array(n);
     this.ages = new Float32Array(n);
     this.lives = new Float32Array(n);
+    this.agesN = new Float32Array(n);
+    this.phases = new Float32Array(n);
+    for (let i = 0; i < n; i++) this.phases[i] = Math.random();
     // Segment buffers for line mode: (prev, curr) pair per particle.
     this.segPositions = new Float32Array(n * 6);
     this.segSpeeds = new Float32Array(n * 2);
@@ -301,6 +502,8 @@ export class FlowSim {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage));
     geo.setAttribute('speed', new THREE.BufferAttribute(this.speeds, 1).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('aAgeN', new THREE.BufferAttribute(this.agesN, 1).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('aPhase', new THREE.BufferAttribute(this.phases, 1));
     this.points = new THREE.Points(geo, this.material);
     this.points.frustumCulled = false;
     this.scene.add(this.points);
@@ -326,9 +529,71 @@ export class FlowSim {
     spriteGeo.setAttribute('aPos', new THREE.InstancedBufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage));
     spriteGeo.setAttribute('aVel', new THREE.InstancedBufferAttribute(this.vels, 3).setUsage(THREE.DynamicDrawUsage));
     spriteGeo.setAttribute('aSpeed', new THREE.InstancedBufferAttribute(this.speeds, 1).setUsage(THREE.DynamicDrawUsage));
+    spriteGeo.setAttribute('aSPhase', new THREE.InstancedBufferAttribute(this.phases, 1));
     this.sprites = new THREE.Mesh(spriteGeo, this.spriteMaterial);
     this.sprites.frustumCulled = false;
     this.scene.add(this.sprites);
+
+    // Ribbons: H history points per particle, two vertices per point.
+    if (this.ribbons) {
+      this.scene.remove(this.ribbons);
+      this.ribbons.geometry.dispose();
+    }
+    const H = (this.H = 16);
+    this.hist = new Float32Array(n * H * 3);
+    this.histHead = 0;
+    const RV = n * H * 2;
+    this.rPos = new Float32Array(RV * 3);
+    this.rTan = new Float32Array(RV * 3);
+    this.rSpeed = new Float32Array(RV);
+    const rSide = new Float32Array(RV);
+    const rT = new Float32Array(RV);
+    for (let p = 0; p < n; p++) {
+      for (let k = 0; k < H; k++) {
+        const b = (p * H + k) * 2;
+        rSide[b] = 1;
+        rSide[b + 1] = -1;
+        rT[b] = rT[b + 1] = k / (H - 1);
+      }
+    }
+    const rIndex = new Uint32Array(n * (H - 1) * 6);
+    let ri = 0;
+    for (let p = 0; p < n; p++) {
+      for (let k = 0; k < H - 1; k++) {
+        const b = (p * H + k) * 2;
+        rIndex[ri++] = b;
+        rIndex[ri++] = b + 1;
+        rIndex[ri++] = b + 2;
+        rIndex[ri++] = b + 2;
+        rIndex[ri++] = b + 1;
+        rIndex[ri++] = b + 3;
+      }
+    }
+    const ribGeo = new THREE.BufferGeometry();
+    ribGeo.setAttribute('position', new THREE.BufferAttribute(this.rPos, 3).setUsage(THREE.DynamicDrawUsage));
+    ribGeo.setAttribute('aTan', new THREE.BufferAttribute(this.rTan, 3).setUsage(THREE.DynamicDrawUsage));
+    ribGeo.setAttribute('aSpeed', new THREE.BufferAttribute(this.rSpeed, 1).setUsage(THREE.DynamicDrawUsage));
+    ribGeo.setAttribute('aSide', new THREE.BufferAttribute(rSide, 1));
+    ribGeo.setAttribute('aT', new THREE.BufferAttribute(rT, 1));
+    ribGeo.setIndex(new THREE.BufferAttribute(rIndex, 1));
+    this.ribbons = new THREE.Mesh(ribGeo, this.ribbonMaterial);
+    this.ribbons.frustumCulled = false;
+    this.scene.add(this.ribbons);
+
+    // Constellation links: preallocated segment pool, drawRange per frame.
+    if (this.links) {
+      this.scene.remove(this.links);
+      this.links.geometry.dispose();
+    }
+    this.maxLinks = 6000;
+    this.linkPositions = new Float32Array(this.maxLinks * 6);
+    this.linkSpeeds = new Float32Array(this.maxLinks * 2);
+    const linkGeo = new THREE.BufferGeometry();
+    linkGeo.setAttribute('position', new THREE.BufferAttribute(this.linkPositions, 3).setUsage(THREE.DynamicDrawUsage));
+    linkGeo.setAttribute('speed', new THREE.BufferAttribute(this.linkSpeeds, 1).setUsage(THREE.DynamicDrawUsage));
+    this.links = new THREE.LineSegments(linkGeo, this.linkMaterial);
+    this.links.frustumCulled = false;
+    this.scene.add(this.links);
 
     this._applyMode();
     if (this.field) this.reseedAll();
@@ -339,16 +604,24 @@ export class FlowSim {
     this.materialSize = def.size;
     this.materialSpeed = def.speed;
     this.jitter = def.jitter ?? 0;
+    this.buoyancy = def.buoyancy ?? 0;
     this.lifeScale = def.lifeScale ?? 1;
+    this.frozen = !!def.frozen;
+    this.showLinks = !!def.links;
     this._intensityScale = def.intensity;
     this._applyIntensity();
     const u = this.material.uniforms;
     u.uColorSlow.value.setRGB(...def.colors[0]);
     u.uColorFast.value.setRGB(...def.colors[1]);
+    u.uStyle.value = def.style ?? 0;
+    this.spriteMaterial.uniforms.uSpriteStyle.value = def.spriteStyle ?? 0;
+    // invert: 'ink' (duotone) or 'water' (pigment absorbance)
     this.inkPass.enabled = !!def.invert;
+    this.inkPass.uniforms.uMode.value = def.invert === 'water' ? 2 : 1;
     this.setTrails(def.trails);
     this.setBloom(def.bloom);
     this._applyMode();
+    if (this.field && this.positions) this.reseedAll();
   }
 
   setGusts(on) {
@@ -356,10 +629,17 @@ export class FlowSim {
     this._clusters = [];
   }
 
+  clearTrails() {
+    this.afterimagePass.uniforms.damp.value = 0;
+    this._clearTrailsNext = true;
+  }
+
   _applyMode() {
     if (this.points) this.points.visible = this.mode === 'points';
     if (this.lines) this.lines.visible = this.mode === 'lines';
-    if (this.sprites) this.sprites.visible = this.mode === 'sprites';
+    if (this.sprites) this.sprites.visible = this.mode === 'sprites' || this.frozen;
+    if (this.ribbons) this.ribbons.visible = this.mode === 'ribbons';
+    if (this.links) this.links.visible = this.showLinks;
   }
 
   _applyIntensity() {
@@ -370,9 +650,46 @@ export class FlowSim {
 
   reseedAll() {
     if (!this.field || !this.positions) return;
+    if (this.frozen) {
+      this._layoutGrid();
+      return;
+    }
     for (let i = 0; i < this.count; i++) this._respawn(i);
     // Stagger ages so lifetimes don't expire in lockstep.
     for (let i = 0; i < this.count; i++) this.ages[i] = Math.random() * this.lives[i];
+  }
+
+  // Filings: park particles on a regular grid over the field bounds.
+  _layoutGrid() {
+    const b = this.field.bounds;
+    const n = this.count;
+    const bw = b.max[0] - b.min[0] || 1;
+    const bh = b.max[1] - b.min[1] || 1;
+    const far = b.min[0] - this.diag * 20; // parking lot for leftovers
+    if (this.field.is3D) {
+      const side = Math.floor(Math.cbrt(n));
+      const bd = b.max[2] - b.min[2] || 1;
+      for (let i = 0; i < n; i++) {
+        const gx = i % side;
+        const gy = ((i / side) | 0) % side;
+        const gz = (i / (side * side)) | 0;
+        const used = gz < side;
+        this.positions[i * 3] = used ? b.min[0] + ((gx + 0.5) / side) * bw : far;
+        this.positions[i * 3 + 1] = used ? b.min[1] + ((gy + 0.5) / side) * bh : far;
+        this.positions[i * 3 + 2] = used ? b.min[2] + ((gz + 0.5) / side) * bd : 0;
+      }
+    } else {
+      const cols = Math.max(2, Math.round(Math.sqrt((n * bw) / bh)));
+      const rows = Math.max(2, Math.floor(n / cols));
+      for (let i = 0; i < n; i++) {
+        const gx = i % cols;
+        const gy = (i / cols) | 0;
+        const used = gy < rows;
+        this.positions[i * 3] = used ? b.min[0] + ((gx + 0.5) / cols) * bw : far;
+        this.positions[i * 3 + 1] = used ? b.min[1] + ((gy + 0.5) / rows) * bh : far;
+        this.positions[i * 3 + 2] = 0;
+      }
+    }
   }
 
   setTrails(damp) {
@@ -421,6 +738,15 @@ export class FlowSim {
       s[i * 6 + 1] = s[i * 6 + 4] = this._spawn[1];
       s[i * 6 + 2] = s[i * 6 + 5] = this._spawn[2];
       this.segSpeeds[i * 2] = this.segSpeeds[i * 2 + 1] = 0;
+    }
+    // Collapse its ribbon history for the same reason.
+    if (this.hist && this.mode === 'ribbons') {
+      const H = this.H;
+      for (let k = 0; k < H; k++) {
+        this.hist[(i * H + k) * 3] = this._spawn[0];
+        this.hist[(i * H + k) * 3 + 1] = this._spawn[1];
+        this.hist[(i * H + k) * 3 + 2] = this._spawn[2];
+      }
     }
   }
 
@@ -473,6 +799,14 @@ export class FlowSim {
         this.controls.dampingFactor = 0.12;
       }
     }
+    // A stirrable field owns the pointer: no pan/zoom, no page-scroll theft.
+    if (this.field.stir) {
+      if (this.controls) this.controls.enabled = false;
+      this.renderer.domElement.style.touchAction = 'none';
+    } else {
+      this.renderer.domElement.style.touchAction = '';
+    }
+    this._stirPrev = null;
     this.renderPass.camera = this.camera;
     this._resize();
   }
@@ -543,9 +877,27 @@ export class FlowSim {
     const scale = (this.speed * this.materialSpeed * 0.14 * this.diag) / f.charSpeed;
     const charSpeed = f.charSpeed;
     const jitter = this.jitter * charSpeed;
+    const buoy = this.buoyancy * charSpeed;
     const pad = this.diag * 0.03;
     const spriteMode = this.mode === 'sprites';
+    const ribbonMode = this.mode === 'ribbons';
     const vels = this.vels;
+
+    // Filings: no motion — just re-ask the field so dashes track live fields.
+    if (this.frozen) {
+      for (let i = 0; i < this.count; i++) {
+        const ok = f.sample(p[i * 3], p[i * 3 + 1], p[i * 3 + 2], v1);
+        vels[i * 3] = ok ? v1[0] : 0;
+        vels[i * 3 + 1] = ok ? v1[1] : 0;
+        vels[i * 3 + 2] = ok ? v1[2] : 0;
+        this.speeds[i] = ok ? Math.hypot(v1[0], v1[1], v1[2]) / charSpeed : 0;
+      }
+      const a = this.sprites.geometry.attributes;
+      a.aPos.needsUpdate = true;
+      a.aVel.needsUpdate = true;
+      a.aSpeed.needsUpdate = true;
+      return;
+    }
 
     // Drift cluster seeds through their own lifecycle.
     if (this.clustered) {
@@ -582,6 +934,10 @@ export class FlowSim {
         vx += (Math.random() - 0.5) * jitter;
         vy += (Math.random() - 0.5) * jitter;
         if (f.is3D) vz += (Math.random() - 0.5) * jitter;
+      }
+      if (buoy > 0) {
+        if (f.is3D) vz += buoy;
+        else vy += buoy;
       }
       const ox = x;
       const oy = y;
@@ -620,6 +976,7 @@ export class FlowSim {
       p[ix + 2] = z;
       const sp = Math.hypot(vx, vy, vz) / charSpeed;
       this.speeds[i] = sp;
+      this.agesN[i] = this.ages[i] / this.lives[i];
 
       if (spriteMode) {
         vels[ix] = vx;
@@ -647,6 +1004,7 @@ export class FlowSim {
 
     this.points.geometry.attributes.position.needsUpdate = true;
     this.points.geometry.attributes.speed.needsUpdate = true;
+    this.points.geometry.attributes.aAgeN.needsUpdate = true;
     if (lineMode) {
       this.lines.geometry.attributes.position.needsUpdate = true;
       this.lines.geometry.attributes.speed.needsUpdate = true;
@@ -657,6 +1015,114 @@ export class FlowSim {
       a.aVel.needsUpdate = true;
       a.aSpeed.needsUpdate = true;
     }
+    if (ribbonMode) this._updateRibbons();
+    if (this.showLinks) this._updateLinks();
+  }
+
+  // Push current positions into each particle's history ring, then rebuild
+  // the ribbon vertex buffer oldest→newest with centered tangents.
+  _updateRibbons() {
+    const H = this.H;
+    const n = this.count;
+    const hist = this.hist;
+    // Advance the ring every other frame (doubles the trail's time span);
+    // the head slot always tracks the current position.
+    this._ribFrame = (this._ribFrame ?? 0) + 1;
+    if (this._ribFrame % 3 === 1) this.histHead = (this.histHead + 1) % H;
+    const head = this.histHead;
+    for (let i = 0; i < n; i++) {
+      const hi = (i * H + head) * 3;
+      hist[hi] = this.positions[i * 3];
+      hist[hi + 1] = this.positions[i * 3 + 1];
+      hist[hi + 2] = this.positions[i * 3 + 2];
+    }
+    const rPos = this.rPos;
+    const rTan = this.rTan;
+    const rSpeed = this.rSpeed;
+    for (let i = 0; i < n; i++) {
+      const base = i * H;
+      const sp = this.speeds[i];
+      for (let k = 0; k < H; k++) {
+        const src = (base + ((head + 1 + k) % H)) * 3;
+        const prev = (base + ((head + 1 + Math.max(0, k - 1)) % H)) * 3;
+        const next = (base + ((head + 1 + Math.min(H - 1, k + 1)) % H)) * 3;
+        const vi = (base + k) * 2 * 3;
+        const x = hist[src];
+        const y = hist[src + 1];
+        const z = hist[src + 2];
+        const tx = hist[next] - hist[prev];
+        const ty = hist[next + 1] - hist[prev + 1];
+        const tz = hist[next + 2] - hist[prev + 2];
+        rPos[vi] = rPos[vi + 3] = x;
+        rPos[vi + 1] = rPos[vi + 4] = y;
+        rPos[vi + 2] = rPos[vi + 5] = z;
+        rTan[vi] = rTan[vi + 3] = tx;
+        rTan[vi + 1] = rTan[vi + 4] = ty;
+        rTan[vi + 2] = rTan[vi + 5] = tz;
+        const si = (base + k) * 2;
+        rSpeed[si] = rSpeed[si + 1] = sp;
+      }
+    }
+    const a = this.ribbons.geometry.attributes;
+    a.position.needsUpdate = true;
+    a.aTan.needsUpdate = true;
+    a.aSpeed.needsUpdate = true;
+  }
+
+  // Constellation: connect close pairs via a per-frame spatial hash.
+  _updateLinks() {
+    const n = this.count;
+    const linkR = this.diag * 0.055;
+    const r2 = linkR * linkR;
+    const cell = linkR;
+    const grid = new Map();
+    const p = this.positions;
+    const is3D = this.field.is3D;
+    for (let i = 0; i < n; i++) {
+      const cx = Math.floor(p[i * 3] / cell);
+      const cy = Math.floor(p[i * 3 + 1] / cell);
+      const cz = is3D ? Math.floor(p[i * 3 + 2] / cell) : 0;
+      const key = (cx * 73856093) ^ (cy * 19349663) ^ (cz * 83492791);
+      let b = grid.get(key);
+      if (!b) grid.set(key, (b = []));
+      b.push(i);
+    }
+    let m = 0;
+    const L = this.linkPositions;
+    const LS = this.linkSpeeds;
+    const zr = is3D ? 1 : 0;
+    outer:
+    for (let i = 0; i < n; i++) {
+      const cx = Math.floor(p[i * 3] / cell);
+      const cy = Math.floor(p[i * 3 + 1] / cell);
+      const cz = is3D ? Math.floor(p[i * 3 + 2] / cell) : 0;
+      for (let dz = -zr; dz <= zr; dz++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const b = grid.get(((cx + dx) * 73856093) ^ ((cy + dy) * 19349663) ^ ((cz + dz) * 83492791));
+            if (!b) continue;
+            for (const j of b) {
+              if (j <= i) continue;
+              const ax = p[i * 3] - p[j * 3];
+              const ay = p[i * 3 + 1] - p[j * 3 + 1];
+              const az = p[i * 3 + 2] - p[j * 3 + 2];
+              const d2 = ax * ax + ay * ay + az * az;
+              if (d2 < r2) {
+                const o = m * 6;
+                L[o] = p[i * 3]; L[o + 1] = p[i * 3 + 1]; L[o + 2] = p[i * 3 + 2];
+                L[o + 3] = p[j * 3]; L[o + 4] = p[j * 3 + 1]; L[o + 5] = p[j * 3 + 2];
+                const s = 1 - d2 / r2; // fade with distance via the speed ramp
+                LS[m * 2] = s; LS[m * 2 + 1] = s;
+                if (++m >= this.maxLinks) break outer;
+              }
+            }
+          }
+        }
+      }
+    }
+    this.links.geometry.setDrawRange(0, m * 2);
+    this.links.geometry.attributes.position.needsUpdate = true;
+    this.links.geometry.attributes.speed.needsUpdate = true;
   }
 
   _updateUniforms() {
@@ -666,6 +1132,8 @@ export class FlowSim {
     const su = this.spriteMaterial.uniforms;
     su.uLen.value = this.sizeParam * this.materialSize * this.diag * 0.011;
     su.uWidth.value = this.sizeParam * this.materialSize * this.diag * 0.0021;
+    this.ribbonMaterial.uniforms.uRibbonWidth.value = this.sizeParam * this.materialSize * this.diag * 0.0028;
+    this.linkMaterial.uniforms.uIntensity.value = this.material.uniforms.uIntensity.value * 0.12;
     if (this.camera.isPerspectiveCamera) {
       u.uPersp.value = 1;
       u.uPerspFactor.value =
@@ -694,7 +1162,10 @@ export class FlowSim {
 
     if (!this.field || !this.points) return;
 
+    this._time += dt;
+    this.material.uniforms.uTime.value = this._time;
     if (this.controls) this.controls.update();
+    if (this.field.update && !this.paused && dt > 0) this.field.update(dt);
     if (!this.paused && dt > 0) this._updateParticles(dt);
     this._updateUniforms();
     this.composer.render();

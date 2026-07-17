@@ -17,6 +17,7 @@ const PLATES = {
   saddle: { make: () => presets.saddle(), particles: 8000, material: 'ink' },
   lorenz: { make: () => presets.lorenz(), particles: 9000, controls: 'rotate', material: 'plasma' },
   abc: { make: () => presets.abc(), particles: 9000, controls: 'rotate', material: 'stardust' },
+  fluid: { make: () => presets.fluid(), particles: 220, material: 'shoal', gusts: true },
 };
 
 const plateSims = new Map();
@@ -286,7 +287,7 @@ $('btn-pause').addEventListener('click', (e) => {
   e.target.textContent = obs.paused ? 'Resume' : 'Pause';
 });
 
-$('btn-reseed').addEventListener('click', () => obs.reseedAll());
+$('btn-reseed').addEventListener('click', () => { obs.reseedAll(); obs.clearTrails(); });
 
 $('ctl-gusts').addEventListener('change', (e) => obs.setGusts(e.target.checked));
 

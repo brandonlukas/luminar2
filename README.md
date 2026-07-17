@@ -4,13 +4,19 @@ A scrolling atlas of vector fields — five annotated "plates" (vortex, dipole,
 saddle, Lorenz, ABC flow) with live particle advection, an essay on how fields
 work, and an observatory bench where you can drag in a CSV of scattered
 point-velocity samples and watch particles flow through your own data.
-Five render substances skin the same flow: stardust (fine additive grains),
-silk (continuous streamline threads), comets (velocity-oriented spark strokes
-with bright heads and tapering tails), plasma (hot, jittering, bloom-heavy),
-and ink (a duotone pass that prints the flow as dark pigment on the paper).
-An orthogonal Gusts toggle respawns particles in short-lived bursts around
-drifting seed points, so any substance blows through in transient swarms —
-like watching a breeze instead of a steady wind.
+Fourteen render substances skin the same flow: stardust, silk, ribbons
+(tapering stroke trails), comets, shoal (procedural koi with swimming tails),
+plasma, embers (cooling sparks with buoyancy), vapor, fireflies, constellation
+(a living neighbour graph), glyphs (symbols oriented along the flow), filings
+(the field's own portrait as oriented dashes), ink, and watercolor (persistent
+pigment washes). An orthogonal Gusts toggle respawns particles in short-lived
+bursts around drifting seeds, so any substance blows through in transient
+swarms.
+
+The sixth atlas plate, The Fluid, is a live CPU Navier–Stokes solver (Stam
+stable fluids) — the only plate you can touch: stirring with the pointer adds
+momentum, pressure balances it, and particles of any substance ride the
+solved field.
 Warm editorial paper (Fraunces + IBM Plex Mono) around dark glowing plates;
 the visual language owes a debt to David Aerne's playful documentation sites.
 
