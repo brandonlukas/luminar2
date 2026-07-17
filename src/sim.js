@@ -71,41 +71,6 @@ const FRAG = /* glsl */ `
   }
 `;
 
-const RIBBON_VERT = /* glsl */ `
-  attribute vec3 aTan;
-  attribute float aSide;
-  attribute float aT;
-  attribute float aSpeed;
-  varying float vSpeed;
-  varying float vT;
-  uniform float uRibbonWidth;
-
-  void main() {
-    vSpeed = aSpeed;
-    vT = aT;
-    vec4 mv = modelViewMatrix * vec4(position, 1.0);
-    vec3 tv = (modelViewMatrix * vec4(aTan, 0.0)).xyz;
-    float tl = length(tv.xy);
-    vec2 perp = tl > 1e-6 ? vec2(-tv.y, tv.x) / tl : vec2(1.0, 0.0);
-    mv.xy += perp * aSide * uRibbonWidth * (0.25 + 0.75 * aT);
-    gl_Position = projectionMatrix * mv;
-  }
-`;
-
-const RIBBON_FRAG = /* glsl */ `
-  precision highp float;
-  varying float vSpeed;
-  varying float vT;
-  uniform vec3 uColorSlow;
-  uniform vec3 uColorFast;
-  uniform float uIntensity;
-
-  void main() {
-    vec3 col = mix(uColorSlow, uColorFast, clamp(vSpeed, 0.0, 1.0));
-    gl_FragColor = vec4(col * (vT * uIntensity), 1.0);
-  }
-`;
-
 const LINE_VERT = /* glsl */ `
   attribute float speed;
   varying float vSpeed;
@@ -342,23 +307,6 @@ export class FlowSim {
       blendSrc: THREE.OneFactor,
       blendDst: THREE.OneFactor,
     });
-    this.ribbonMaterial = new THREE.ShaderMaterial({
-      vertexShader: RIBBON_VERT,
-      fragmentShader: RIBBON_FRAG,
-      uniforms: {
-        uColorSlow: this.material.uniforms.uColorSlow,
-        uColorFast: this.material.uniforms.uColorFast,
-        uIntensity: this.material.uniforms.uIntensity,
-        uRibbonWidth: { value: 1 },
-      },
-      transparent: true,
-      depthWrite: false,
-      depthTest: false,
-      side: THREE.DoubleSide,
-      blending: THREE.CustomBlending,
-      blendSrc: THREE.OneFactor,
-      blendDst: THREE.OneFactor,
-    });
     // Constellation links get their own (dimmer) intensity.
     this.linkMaterial = new THREE.ShaderMaterial({
       vertexShader: LINE_VERT,
@@ -378,7 +326,6 @@ export class FlowSim {
     this.points = null;
     this.lines = null;
     this.sprites = null;
-    this.ribbons = null;
     this.links = null;
     this.mode = 'points';
     this.materialSize = 1;
@@ -527,52 +474,6 @@ export class FlowSim {
     this.sprites.frustumCulled = false;
     this.scene.add(this.sprites);
 
-    // Ribbons: H history points per particle, two vertices per point.
-    if (this.ribbons) {
-      this.scene.remove(this.ribbons);
-      this.ribbons.geometry.dispose();
-    }
-    const H = (this.H = 16);
-    this.hist = new Float32Array(n * H * 3);
-    this.histHead = 0;
-    const RV = n * H * 2;
-    this.rPos = new Float32Array(RV * 3);
-    this.rTan = new Float32Array(RV * 3);
-    this.rSpeed = new Float32Array(RV);
-    const rSide = new Float32Array(RV);
-    const rT = new Float32Array(RV);
-    for (let p = 0; p < n; p++) {
-      for (let k = 0; k < H; k++) {
-        const b = (p * H + k) * 2;
-        rSide[b] = 1;
-        rSide[b + 1] = -1;
-        rT[b] = rT[b + 1] = k / (H - 1);
-      }
-    }
-    const rIndex = new Uint32Array(n * (H - 1) * 6);
-    let ri = 0;
-    for (let p = 0; p < n; p++) {
-      for (let k = 0; k < H - 1; k++) {
-        const b = (p * H + k) * 2;
-        rIndex[ri++] = b;
-        rIndex[ri++] = b + 1;
-        rIndex[ri++] = b + 2;
-        rIndex[ri++] = b + 2;
-        rIndex[ri++] = b + 1;
-        rIndex[ri++] = b + 3;
-      }
-    }
-    const ribGeo = new THREE.BufferGeometry();
-    ribGeo.setAttribute('position', new THREE.BufferAttribute(this.rPos, 3).setUsage(THREE.DynamicDrawUsage));
-    ribGeo.setAttribute('aTan', new THREE.BufferAttribute(this.rTan, 3).setUsage(THREE.DynamicDrawUsage));
-    ribGeo.setAttribute('aSpeed', new THREE.BufferAttribute(this.rSpeed, 1).setUsage(THREE.DynamicDrawUsage));
-    ribGeo.setAttribute('aSide', new THREE.BufferAttribute(rSide, 1));
-    ribGeo.setAttribute('aT', new THREE.BufferAttribute(rT, 1));
-    ribGeo.setIndex(new THREE.BufferAttribute(rIndex, 1));
-    this.ribbons = new THREE.Mesh(ribGeo, this.ribbonMaterial);
-    this.ribbons.frustumCulled = false;
-    this.scene.add(this.ribbons);
-
     // Constellation links: preallocated segment pool, drawRange per frame.
     if (this.links) {
       this.scene.remove(this.links);
@@ -629,7 +530,6 @@ export class FlowSim {
     if (this.points) this.points.visible = this.mode === 'points';
     if (this.lines) this.lines.visible = this.mode === 'lines';
     if (this.sprites) this.sprites.visible = this.mode === 'sprites' || this.frozen;
-    if (this.ribbons) this.ribbons.visible = this.mode === 'ribbons';
     if (this.links) this.links.visible = this.showLinks;
   }
 
@@ -729,15 +629,6 @@ export class FlowSim {
       s[i * 6 + 1] = s[i * 6 + 4] = this._spawn[1];
       s[i * 6 + 2] = s[i * 6 + 5] = this._spawn[2];
       this.segSpeeds[i * 2] = this.segSpeeds[i * 2 + 1] = 0;
-    }
-    // Collapse its ribbon history for the same reason.
-    if (this.hist && this.mode === 'ribbons') {
-      const H = this.H;
-      for (let k = 0; k < H; k++) {
-        this.hist[(i * H + k) * 3] = this._spawn[0];
-        this.hist[(i * H + k) * 3 + 1] = this._spawn[1];
-        this.hist[(i * H + k) * 3 + 2] = this._spawn[2];
-      }
     }
   }
 
@@ -871,7 +762,6 @@ export class FlowSim {
     const buoy = this.buoyancy * charSpeed;
     const pad = this.diag * 0.03;
     const spriteMode = this.mode === 'sprites';
-    const ribbonMode = this.mode === 'ribbons';
     const vels = this.vels;
 
     // Filings: no motion — just re-ask the field so dashes track live fields.
@@ -1006,58 +896,7 @@ export class FlowSim {
       a.aVel.needsUpdate = true;
       a.aSpeed.needsUpdate = true;
     }
-    if (ribbonMode) this._updateRibbons();
     if (this.showLinks) this._updateLinks();
-  }
-
-  // Push current positions into each particle's history ring, then rebuild
-  // the ribbon vertex buffer oldest→newest with centered tangents.
-  _updateRibbons() {
-    const H = this.H;
-    const n = this.count;
-    const hist = this.hist;
-    // Advance the ring every other frame (doubles the trail's time span);
-    // the head slot always tracks the current position.
-    this._ribFrame = (this._ribFrame ?? 0) + 1;
-    if (this._ribFrame % 3 === 1) this.histHead = (this.histHead + 1) % H;
-    const head = this.histHead;
-    for (let i = 0; i < n; i++) {
-      const hi = (i * H + head) * 3;
-      hist[hi] = this.positions[i * 3];
-      hist[hi + 1] = this.positions[i * 3 + 1];
-      hist[hi + 2] = this.positions[i * 3 + 2];
-    }
-    const rPos = this.rPos;
-    const rTan = this.rTan;
-    const rSpeed = this.rSpeed;
-    for (let i = 0; i < n; i++) {
-      const base = i * H;
-      const sp = this.speeds[i];
-      for (let k = 0; k < H; k++) {
-        const src = (base + ((head + 1 + k) % H)) * 3;
-        const prev = (base + ((head + 1 + Math.max(0, k - 1)) % H)) * 3;
-        const next = (base + ((head + 1 + Math.min(H - 1, k + 1)) % H)) * 3;
-        const vi = (base + k) * 2 * 3;
-        const x = hist[src];
-        const y = hist[src + 1];
-        const z = hist[src + 2];
-        const tx = hist[next] - hist[prev];
-        const ty = hist[next + 1] - hist[prev + 1];
-        const tz = hist[next + 2] - hist[prev + 2];
-        rPos[vi] = rPos[vi + 3] = x;
-        rPos[vi + 1] = rPos[vi + 4] = y;
-        rPos[vi + 2] = rPos[vi + 5] = z;
-        rTan[vi] = rTan[vi + 3] = tx;
-        rTan[vi + 1] = rTan[vi + 4] = ty;
-        rTan[vi + 2] = rTan[vi + 5] = tz;
-        const si = (base + k) * 2;
-        rSpeed[si] = rSpeed[si + 1] = sp;
-      }
-    }
-    const a = this.ribbons.geometry.attributes;
-    a.position.needsUpdate = true;
-    a.aTan.needsUpdate = true;
-    a.aSpeed.needsUpdate = true;
   }
 
   // Constellation: connect close pairs via a per-frame spatial hash.
@@ -1123,7 +962,6 @@ export class FlowSim {
     const su = this.spriteMaterial.uniforms;
     su.uLen.value = this.sizeParam * this.materialSize * this.diag * 0.011;
     su.uWidth.value = this.sizeParam * this.materialSize * this.diag * 0.0021;
-    this.ribbonMaterial.uniforms.uRibbonWidth.value = this.sizeParam * this.materialSize * this.diag * 0.0028;
     this.linkMaterial.uniforms.uIntensity.value = this.material.uniforms.uIntensity.value * 0.12;
     if (this.camera.isPerspectiveCamera) {
       u.uPersp.value = 1;

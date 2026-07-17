@@ -64,17 +64,6 @@ export const MATERIALS = {
     invert: 'ink',
     colors: [[0.45, 0.45, 0.45], [1.15, 1.15, 1.15]],
   },
-  ribbons: {
-    label: 'Ribbons',
-    count: 1200,
-    mode: 'ribbons',
-    size: 1,
-    intensity: 0.55,
-    speed: 1.0,
-    trails: 0.3,
-    bloom: 0.7,
-    colors: [[0.1, 0.3, 1.0], [1.0, 0.9, 0.7]],
-  },
   embers: {
     label: 'Embers',
     count: 6000,
