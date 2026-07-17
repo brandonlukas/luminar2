@@ -60,6 +60,8 @@ const FRAG = /* glsl */ `
       col = vec3(1.0, 0.95 * pow(1.0 - t, 1.6), 0.85 * pow(1.0 - t, 3.5));
       alpha *= 1.0 - t * t;
     }
+    // gentle fade in/out over each particle's life — no sudden vanishing
+    alpha *= smoothstep(0.0, 0.08, vAgeN) * (1.0 - smoothstep(0.82, 1.0, vAgeN));
     alpha *= uIntensity;
     // Blending is ONE,ONE: color carries all the energy.
     gl_FragColor = vec4(col * alpha, 1.0);
@@ -68,9 +70,12 @@ const FRAG = /* glsl */ `
 
 const LINE_VERT = /* glsl */ `
   attribute float speed;
+  attribute float aAgeN;
   varying float vSpeed;
+  varying float vAgeN;
   void main() {
     vSpeed = speed;
+    vAgeN = aAgeN;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
@@ -78,12 +83,14 @@ const LINE_VERT = /* glsl */ `
 const LINE_FRAG = /* glsl */ `
   precision highp float;
   varying float vSpeed;
+  varying float vAgeN;
   uniform vec3 uColorSlow;
   uniform vec3 uColorFast;
   uniform float uIntensity;
   void main() {
     vec3 col = mix(uColorSlow, uColorFast, clamp(vSpeed, 0.0, 1.0));
-    gl_FragColor = vec4(col * uIntensity, 1.0);
+    float fade = smoothstep(0.0, 0.08, vAgeN) * (1.0 - smoothstep(0.82, 1.0, vAgeN));
+    gl_FragColor = vec4(col * uIntensity * fade, 1.0);
   }
 `;
 
@@ -543,6 +550,7 @@ export class FlowSim {
     // Segment buffers for line mode: (prev, curr) pair per particle.
     this.segPositions = new Float32Array(n * 6);
     this.segSpeeds = new Float32Array(n * 2);
+    this.segAges = new Float32Array(n * 2);
 
     if (this.points) {
       this.scene.remove(this.points);
@@ -564,6 +572,7 @@ export class FlowSim {
     const lineGeo = new THREE.BufferGeometry();
     lineGeo.setAttribute('position', new THREE.BufferAttribute(this.segPositions, 3).setUsage(THREE.DynamicDrawUsage));
     lineGeo.setAttribute('speed', new THREE.BufferAttribute(this.segSpeeds, 1).setUsage(THREE.DynamicDrawUsage));
+    lineGeo.setAttribute('aAgeN', new THREE.BufferAttribute(this.segAges, 1).setUsage(THREE.DynamicDrawUsage));
     this.lines = new THREE.LineSegments(lineGeo, this.lineMaterial);
     this.lines.frustumCulled = false;
     this.scene.add(this.lines);
@@ -599,6 +608,8 @@ export class FlowSim {
     const linkGeo = new THREE.BufferGeometry();
     linkGeo.setAttribute('position', new THREE.BufferAttribute(this.linkPositions, 3).setUsage(THREE.DynamicDrawUsage));
     linkGeo.setAttribute('speed', new THREE.BufferAttribute(this.linkSpeeds, 1).setUsage(THREE.DynamicDrawUsage));
+    const linkAges = new Float32Array(this.maxLinks * 2).fill(0.5);
+    linkGeo.setAttribute('aAgeN', new THREE.BufferAttribute(linkAges, 1));
     this.links = new THREE.LineSegments(linkGeo, this.linkMaterial);
     this.links.frustumCulled = false;
     this.scene.add(this.links);
@@ -770,6 +781,7 @@ export class FlowSim {
       s[i * 6 + 1] = s[i * 6 + 4] = this._spawn[1];
       s[i * 6 + 2] = s[i * 6 + 5] = this._spawn[2];
       this.segSpeeds[i * 2] = this.segSpeeds[i * 2 + 1] = 0;
+      if (this.segAges) this.segAges[i * 2] = this.segAges[i * 2 + 1] = 0;
     }
   }
 
@@ -1016,6 +1028,7 @@ export class FlowSim {
         seg[si + 5] = z;
         segS[i * 2] = sp;
         segS[i * 2 + 1] = sp;
+        this.segAges[i * 2] = this.segAges[i * 2 + 1] = this.agesN[i];
       }
     }
 
@@ -1025,6 +1038,7 @@ export class FlowSim {
     if (lineMode) {
       this.lines.geometry.attributes.position.needsUpdate = true;
       this.lines.geometry.attributes.speed.needsUpdate = true;
+      this.lines.geometry.attributes.aAgeN.needsUpdate = true;
     }
     if (spriteMode) {
       const a = this.sprites.geometry.attributes;
