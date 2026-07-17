@@ -11,12 +11,12 @@ const $ = (id) => document.getElementById(id);
 // ————————————————————————————————————————————————
 
 const PLATES = {
-  hero: { make: () => presets.turbulence(), particles: 10000, material: 'stardust' },
+  hero: { make: () => presets.turbulence(), particles: 2500, material: 'comets' },
   vortex: { make: () => presets.vortex(), particles: 5000, material: 'silk' },
-  dipole: { make: () => presets.dipole(), particles: 1600, material: 'goo' },
+  dipole: { make: () => presets.dipole(), particles: 900, material: 'goo' },
   saddle: { make: () => presets.saddle(), particles: 8000, material: 'ink' },
   lorenz: { make: () => presets.lorenz(), particles: 9000, controls: 'rotate', material: 'plasma' },
-  abc: { make: () => presets.abc(), particles: 5500, controls: 'rotate', material: 'silk' },
+  abc: { make: () => presets.abc(), particles: 9000, controls: 'rotate', material: 'stardust' },
 };
 
 const plateSims = new Map();

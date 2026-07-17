@@ -64,6 +64,50 @@ const LINE_FRAG = /* glsl */ `
   }
 `;
 
+const SPRITE_VERT = /* glsl */ `
+  attribute vec3 aPos;
+  attribute vec3 aVel;
+  attribute float aSpeed;
+  varying vec2 vCoord;
+  varying float vSpeed;
+  uniform float uLen;   // half-length in world units at speed 1
+  uniform float uWidth; // half-width in world units
+
+  void main() {
+    vCoord = position.xy;
+    vSpeed = aSpeed;
+    vec4 mv = modelViewMatrix * vec4(aPos, 1.0);
+    vec3 vdir = (modelViewMatrix * vec4(aVel, 0.0)).xyz;
+    float vlen = length(vdir);
+    vec3 dir = vlen > 1e-6 ? vdir / vlen : vec3(1.0, 0.0, 0.0);
+    vec3 perp = normalize(vec3(-dir.y, dir.x, 1e-4));
+    float len = uLen * (0.3 + clamp(aSpeed, 0.0, 1.6));
+    mv.xyz += dir * position.x * len + perp * position.y * uWidth;
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+
+const SPRITE_FRAG = /* glsl */ `
+  precision highp float;
+  varying vec2 vCoord;
+  varying float vSpeed;
+  uniform vec3 uColorSlow;
+  uniform vec3 uColorFast;
+  uniform float uIntensity;
+
+  void main() {
+    // x: -1 tail .. +1 head. Teardrop: wide bright head, tapering tail.
+    float t = vCoord.x * 0.5 + 0.5;
+    float env = mix(0.18, 1.0, t);
+    float lat = vCoord.y / env;
+    float body = max(0.0, 1.0 - lat * lat);
+    float shape = smoothstep(0.0, 0.3, t) * (1.0 - smoothstep(0.88, 1.0, t));
+    float alpha = body * body * shape * (0.3 + 0.7 * t) * uIntensity;
+    vec3 col = mix(uColorSlow, uColorFast, clamp(vSpeed, 0.0, 1.0));
+    gl_FragColor = vec4(col * alpha, 1.0);
+  }
+`;
+
 // Metaball threshold: fat gaussian sprites accumulate; a sharp smoothstep on
 // their summed luminance fuses neighbours into one gooey surface.
 const GooShader = {
@@ -175,12 +219,34 @@ export class FlowSim {
       blendSrc: THREE.OneFactor,
       blendDst: THREE.OneFactor,
     });
+    this.spriteMaterial = new THREE.ShaderMaterial({
+      vertexShader: SPRITE_VERT,
+      fragmentShader: SPRITE_FRAG,
+      uniforms: {
+        uColorSlow: this.material.uniforms.uColorSlow,
+        uColorFast: this.material.uniforms.uColorFast,
+        uIntensity: this.material.uniforms.uIntensity,
+        uLen: { value: 1 },
+        uWidth: { value: 1 },
+      },
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      side: THREE.DoubleSide,
+      blending: THREE.CustomBlending,
+      blendSrc: THREE.OneFactor,
+      blendDst: THREE.OneFactor,
+    });
     this.points = null;
     this.lines = null;
+    this.sprites = null;
     this.mode = 'points';
     this.materialSize = 1;
     this.materialSpeed = 1;
     this.jitter = 0;
+    this.lifeScale = 1;
+    this.clustered = false;
+    this._clusters = [];
     this._intensityScale = 1;
 
     this.composer = new EffectComposer(this.renderer);
@@ -277,6 +343,24 @@ export class FlowSim {
     this.lines.frustumCulled = false;
     this.scene.add(this.lines);
 
+    // Comet sprites: one quad per particle, stretched along velocity.
+    if (this.sprites) {
+      this.scene.remove(this.sprites);
+      this.sprites.geometry.dispose();
+    }
+    this.vels = new Float32Array(n * 3);
+    const spriteGeo = new THREE.InstancedBufferGeometry();
+    spriteGeo.instanceCount = n;
+    spriteGeo.setAttribute('position', new THREE.BufferAttribute(
+      new Float32Array([-1, -1, 0, 1, -1, 0, -1, 1, 0, 1, 1, 0]), 3));
+    spriteGeo.setIndex([0, 1, 2, 2, 1, 3]);
+    spriteGeo.setAttribute('aPos', new THREE.InstancedBufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage));
+    spriteGeo.setAttribute('aVel', new THREE.InstancedBufferAttribute(this.vels, 3).setUsage(THREE.DynamicDrawUsage));
+    spriteGeo.setAttribute('aSpeed', new THREE.InstancedBufferAttribute(this.speeds, 1).setUsage(THREE.DynamicDrawUsage));
+    this.sprites = new THREE.Mesh(spriteGeo, this.spriteMaterial);
+    this.sprites.frustumCulled = false;
+    this.scene.add(this.sprites);
+
     this._applyMode();
     if (this.field) this.reseedAll();
   }
@@ -286,6 +370,11 @@ export class FlowSim {
     this.materialSize = def.size;
     this.materialSpeed = def.speed;
     this.jitter = def.jitter ?? 0;
+    this.lifeScale = def.lifeScale ?? 1;
+    this.clustered = !!def.clustered;
+    this.clusterSigma = def.clusterSigma;
+    this.clusterCount = def.clusterCount;
+    this._clusters = [];
     this._intensityScale = def.intensity;
     this._applyIntensity();
     const u = this.material.uniforms;
@@ -301,6 +390,7 @@ export class FlowSim {
   _applyMode() {
     if (this.points) this.points.visible = this.mode === 'points';
     if (this.lines) this.lines.visible = this.mode === 'lines';
+    if (this.sprites) this.sprites.visible = this.mode === 'sprites';
   }
 
   _applyIntensity() {
@@ -327,13 +417,33 @@ export class FlowSim {
 
   // ————— internals —————
 
+  // Clustered substances respawn in bursts around drifting seed points, so
+  // the flow shears each clump into a flock before it disperses.
+  _clusterSpawn(out) {
+    if (this._clusters.length === 0) {
+      const K = this.clusterCount ?? 7;
+      for (let k = 0; k < K; k++) {
+        const p = [0, 0, 0];
+        this.field.spawn(p);
+        this._clusters.push({ p, age: Math.random() * 2, life: 1.5 + Math.random() * 3 });
+      }
+    }
+    const c = this._clusters[(Math.random() * this._clusters.length) | 0];
+    const sigma = this.diag * (this.clusterSigma ?? 0.022);
+    const g = () => (Math.random() + Math.random() + Math.random() - 1.5) * 1.4 * sigma;
+    out[0] = c.p[0] + g();
+    out[1] = c.p[1] + g();
+    out[2] = this.field.is3D ? c.p[2] + g() : 0;
+  }
+
   _respawn(i) {
-    this.field.spawn(this._spawn);
+    if (this.clustered) this._clusterSpawn(this._spawn);
+    else this.field.spawn(this._spawn);
     this.positions[i * 3] = this._spawn[0];
     this.positions[i * 3 + 1] = this._spawn[1];
     this.positions[i * 3 + 2] = this._spawn[2];
     this.ages[i] = 0;
-    this.lives[i] = 3 + Math.random() * 6;
+    this.lives[i] = (3 + Math.random() * 6) * this.lifeScale;
     this.speeds[i] = 0;
     // Collapse the particle's line segment so no streak spans the jump.
     const s = this.segPositions;
@@ -465,6 +575,20 @@ export class FlowSim {
     const charSpeed = f.charSpeed;
     const jitter = this.jitter * charSpeed;
     const pad = this.diag * 0.03;
+    const spriteMode = this.mode === 'sprites';
+    const vels = this.vels;
+
+    // Drift cluster seeds through their own lifecycle.
+    if (this.clustered) {
+      for (const c of this._clusters) {
+        c.age += dt;
+        if (c.age > c.life) {
+          f.spawn(c.p);
+          c.age = 0;
+          c.life = 1.5 + Math.random() * 3;
+        }
+      }
+    }
 
     for (let i = 0; i < this.count; i++) {
       const ix = i * 3;
@@ -528,6 +652,12 @@ export class FlowSim {
       const sp = Math.hypot(vx, vy, vz) / charSpeed;
       this.speeds[i] = sp;
 
+      if (spriteMode) {
+        vels[ix] = vx;
+        vels[ix + 1] = vy;
+        vels[ix + 2] = vz;
+      }
+
       if (lineMode) {
         const si = i * 6;
         // A wrap teleports the particle — collapse that segment.
@@ -552,12 +682,21 @@ export class FlowSim {
       this.lines.geometry.attributes.position.needsUpdate = true;
       this.lines.geometry.attributes.speed.needsUpdate = true;
     }
+    if (spriteMode) {
+      const a = this.sprites.geometry.attributes;
+      a.aPos.needsUpdate = true;
+      a.aVel.needsUpdate = true;
+      a.aSpeed.needsUpdate = true;
+    }
   }
 
   _updateUniforms() {
     const u = this.material.uniforms;
     const h = this.container.clientHeight || 2;
     u.uWorldSize.value = this.sizeParam * this.materialSize * this.diag * 0.0038;
+    const su = this.spriteMaterial.uniforms;
+    su.uLen.value = this.sizeParam * this.materialSize * this.diag * 0.011;
+    su.uWidth.value = this.sizeParam * this.materialSize * this.diag * 0.0021;
     if (this.camera.isPerspectiveCamera) {
       u.uPersp.value = 1;
       u.uPerspFactor.value =
