@@ -4,12 +4,11 @@ A scrolling atlas of vector fields — five annotated "plates" (vortex, dipole,
 saddle, Lorenz, ABC flow) with live particle advection, an essay on how fields
 work, and an observatory bench where you can drag in a CSV of scattered
 point-velocity samples and watch particles flow through your own data.
-Fourteen render substances skin the same flow: stardust, silk, ribbons
+Thirteen render substances skin the same flow: stardust, silk, ribbons
 (tapering stroke trails), comets, shoal (procedural koi with swimming tails),
 plasma, embers (cooling sparks with buoyancy), vapor, fireflies, constellation
 (a living neighbour graph), glyphs (symbols oriented along the flow), filings
-(the field's own portrait as oriented dashes), ink, and watercolor (persistent
-pigment washes). An orthogonal Gusts toggle respawns particles in short-lived
+(the field's own portrait as oriented dashes), and ink. An orthogonal Gusts toggle respawns particles in short-lived
 bursts around drifting seeds, so any substance blows through in transient
 swarms.
 

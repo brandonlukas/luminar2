@@ -139,18 +139,6 @@ export const MATERIALS = {
     bloom: 0.5,
     colors: [[0.45, 0.5, 0.62], [1.0, 0.88, 0.65]],
   },
-  watercolor: {
-    label: 'Watercolor',
-    count: 9000,
-    mode: 'points',
-    invert: 'water',
-    size: 3,
-    intensity: 0.45,
-    speed: 0.55,
-    trails: 0.96,
-    bloom: 0.2,
-    colors: [[0.08, 0.3, 0.9], [0.85, 0.2, 0.12]],
-  },
   shoal: {
     label: 'Shoal',
     count: 260,

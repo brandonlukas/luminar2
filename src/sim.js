@@ -221,14 +221,12 @@ const SPRITE_FRAG = /* glsl */ `
   }
 `;
 
-// Ink/watercolor: runs last, after tone mapping. Mode 1 maps luminance to
-// duotone pigment; mode 2 treats light as absorbance — colored washes.
+// Ink: runs last, after tone mapping — luminance becomes pigment on paper.
 const InkShader = {
   uniforms: {
     tDiffuse: { value: null },
     uPaper: { value: null },
     uInk: { value: null },
-    uMode: { value: 1 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -238,16 +236,11 @@ const InkShader = {
     uniform sampler2D tDiffuse;
     uniform vec3 uPaper;
     uniform vec3 uInk;
-    uniform float uMode;
     varying vec2 vUv;
     void main() {
       vec4 c = texture2D(tDiffuse, vUv);
-      if (uMode > 1.5) {
-        gl_FragColor = vec4(uPaper * exp(-c.rgb * 2.8), 1.0);
-      } else {
-        float l = clamp(max(c.r, max(c.g, c.b)), 0.0, 1.0);
-        gl_FragColor = vec4(mix(uPaper, uInk, l), 1.0);
-      }
+      float l = clamp(max(c.r, max(c.g, c.b)), 0.0, 1.0);
+      gl_FragColor = vec4(mix(uPaper, uInk, l), 1.0);
     }
   `,
 };
@@ -615,9 +608,7 @@ export class FlowSim {
     u.uColorFast.value.setRGB(...def.colors[1]);
     u.uStyle.value = def.style ?? 0;
     this.spriteMaterial.uniforms.uSpriteStyle.value = def.spriteStyle ?? 0;
-    // invert: 'ink' (duotone) or 'water' (pigment absorbance)
     this.inkPass.enabled = !!def.invert;
-    this.inkPass.uniforms.uMode.value = def.invert === 'water' ? 2 : 1;
     this.setTrails(def.trails);
     this.setBloom(def.bloom);
     this._applyMode();
