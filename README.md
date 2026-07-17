@@ -5,7 +5,7 @@ saddle, Lorenz, ABC flow) with live particle advection, an essay on how fields
 work, and an observatory bench where you can drag in a CSV of scattered
 point-velocity samples and watch particles flow through your own data.
 Twelve render substances skin the same flow: stardust, silk, comets, shoal
-(procedural koi with swimming tails), plasma, embers (cooling sparks), vapor, fireflies, constellation (a living neighbour graph), glyphs
+(shaded 3D-look koi with swimming tails, trailed by bubbles), plasma, embers (cooling sparks), vapor, fireflies, constellation (a living neighbour graph), glyphs
 (symbols oriented along the flow), filings (the field's own portrait as
 oriented dashes), and ink. An orthogonal Gusts toggle respawns particles in short-lived
 bursts around drifting seeds, so any substance blows through in transient

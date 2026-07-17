@@ -119,9 +119,11 @@ const SPRITE_VERT = /* glsl */ `
     if (uSpriteStyle > 1.5) {          // glyphs: square, unstretched
       len = uLen;
       wid = uLen;
-    } else if (uSpriteStyle > 0.5) {   // fish: mild stretch, plump body
-      len = uLen * (0.75 + 0.45 * clamp(aSpeed, 0.0, 1.0));
-      wid = uWidth * 3.4;
+    } else if (uSpriteStyle > 0.5) {   // fish: mild stretch, plump body,
+      // per-fish scale for a near/far depth illusion
+      float sc = mix(0.55, 1.6, fract(aSPhase * 3.77));
+      len = uLen * sc * (0.75 + 0.45 * clamp(aSpeed, 0.0, 1.0));
+      wid = uWidth * 3.4 * sc;
     } else {                            // comet: speed-stretched streak
       len = uLen * (0.3 + clamp(aSpeed, 0.0, 1.6));
       wid = uWidth;
@@ -161,16 +163,29 @@ const SPRITE_FRAG = /* glsl */ `
       float tailw = 1.0 - (xx * 0.5 + 0.5);
       float yy = vCoord.y + sin(uTime * 6.0 + vPhase * 6.2832 + xx * 2.4) * 0.3 * tailw;
       float bodyw = 0.6 * sqrt(max(0.0, (1.0 - xx) * (xx + 0.45) / 0.75));
-      float body = xx > -0.45 ? smoothstep(0.07, -0.05, abs(yy) - bodyw) : 0.0;
+      float body = xx > -0.45 ? smoothstep(0.05, -0.03, abs(yy) - bodyw) : 0.0;
       float finw = 0.6 * (-xx - 0.3);
-      float fin = xx < -0.3 ? smoothstep(0.06, -0.06, abs(yy) - finw) : 0.0;
-      float m = max(body, fin * 0.85);
-      // koi palette: per-fish blend orange↔gold, pale belly, speed shimmer
-      vec3 koiA = vec3(1.0, 0.42, 0.06);
-      vec3 koiB = vec3(1.0, 0.83, 0.28);
-      vec3 base = mix(koiA, koiB, fract(vPhase * 5.17));
-      base = mix(base, vec3(1.0, 0.96, 0.88), smoothstep(0.0, 0.7, -yy) * 0.4);
-      base *= 0.6 + 0.55 * clamp(vSpeed, 0.0, 1.0);
+      float fin = xx < -0.3 ? smoothstep(0.05, -0.05, abs(yy) - finw) : 0.0;
+      float m = max(body, fin * 0.9);
+      // shoal palette: orange, gold, magenta, teal — picked per fish
+      float hp = fract(vPhase * 5.17);
+      vec3 base =
+        hp < 0.50 ? mix(vec3(1.0, 0.18, 0.02), vec3(1.0, 0.48, 0.05), hp / 0.50) :
+        hp < 0.75 ? mix(vec3(1.0, 0.62, 0.08), vec3(1.0, 0.85, 0.28), (hp - 0.50) / 0.25) :
+        hp < 0.88 ? mix(vec3(0.92, 0.10, 0.38), vec3(0.72, 0.18, 0.72), (hp - 0.75) / 0.13) :
+                    mix(vec3(0.08, 0.62, 0.75), vec3(0.32, 0.85, 0.88), (hp - 0.88) / 0.12);
+      // calico patches on roughly half the fish
+      float mottle = smoothstep(0.25, 0.6, sin(vPhase * 61.7 + xx * 5.3) * sin(vPhase * 23.3 + yy * 7.1));
+      base = mix(base, vec3(1.0, 0.97, 0.9), mottle * step(0.5, fract(vPhase * 2.71)) * 0.6);
+      // cylindrical shading: dark back, pale belly, rounded flanks
+      float lat = bodyw > 1e-4 ? clamp(yy / bodyw, -1.0, 1.0) : 0.0;
+      base *= 0.72 + 0.28 * sqrt(max(0.0, 1.0 - lat * lat));
+      base = mix(base, base * 0.5, smoothstep(0.1, 0.95, lat));
+      base = mix(base, vec3(1.0, 0.98, 0.92), smoothstep(-0.2, -0.95, lat) * 0.35);
+      // crisp dark rim so the silhouette reads as a cut-out
+      float rim = 1.0 - smoothstep(0.0, 0.10, bodyw - abs(yy));
+      base *= 1.0 - 0.45 * rim * body;
+      base *= 0.75 + 0.4 * clamp(vSpeed, 0.0, 1.0);
       gl_FragColor = vec4(base * m * uIntensity, 1.0);
       return;
     }
@@ -183,6 +198,41 @@ const SPRITE_FRAG = /* glsl */ `
     float shape = smoothstep(0.0, 0.3, t) * (1.0 - smoothstep(0.88, 1.0, t));
     float alpha = body * body * shape * (0.3 + 0.7 * t) * uIntensity;
     gl_FragColor = vec4(col * alpha, 1.0);
+  }
+`;
+
+const BUBBLE_VERT = /* glsl */ `
+  attribute float aBAge;
+  attribute float aBSize;
+  varying float vAge;
+  uniform float uPixPerUnit;
+  uniform float uPerspFactor;
+  uniform float uPersp;
+
+  void main() {
+    vAge = aBAge;
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    float ws = aBSize * (0.7 + 0.6 * clamp(aBAge, 0.0, 1.0));
+    float px = uPersp > 0.5
+      ? ws * uPerspFactor / max(0.1, -mv.z)
+      : ws * uPixPerUnit;
+    gl_PointSize = clamp(px, 1.0, 40.0);
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+
+const BUBBLE_FRAG = /* glsl */ `
+  precision highp float;
+  varying float vAge;
+
+  void main() {
+    vec2 pc = gl_PointCoord;
+    float d = length(pc - 0.5);
+    float ring = smoothstep(0.10, 0.03, abs(d - 0.33));
+    float glint = smoothstep(0.09, 0.0, length(pc - vec2(0.62, 0.35)));
+    float fade = pow(max(0.0, sin(3.1416 * min(vAge, 1.0))), 0.75);
+    vec3 col = vec3(0.75, 0.88, 1.0);
+    gl_FragColor = vec4(col * (ring * 0.45 + glint * 0.7) * fade * 0.55, 1.0);
   }
 `;
 
@@ -323,9 +373,26 @@ export class FlowSim {
       blendSrc: THREE.OneFactor,
       blendDst: THREE.OneFactor,
     });
+    this.bubbleMaterial = new THREE.ShaderMaterial({
+      vertexShader: BUBBLE_VERT,
+      fragmentShader: BUBBLE_FRAG,
+      uniforms: {
+        uPixPerUnit: this.material.uniforms.uPixPerUnit,
+        uPerspFactor: this.material.uniforms.uPerspFactor,
+        uPersp: this.material.uniforms.uPersp,
+      },
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      blending: THREE.CustomBlending,
+      blendSrc: THREE.OneFactor,
+      blendDst: THREE.OneFactor,
+    });
     this.points = null;
     this.lines = null;
     this.sprites = null;
+    this.bubblesObj = null;
+    this.showBubbles = false;
     this.links = null;
     this.mode = 'points';
     this.materialSize = 1;
@@ -488,6 +555,31 @@ export class FlowSim {
     this.links.frustumCulled = false;
     this.scene.add(this.links);
 
+    // Bubbles: a small fixed overlay pool (shoal only).
+    if (this.bubblesObj) {
+      this.scene.remove(this.bubblesObj);
+      this.bubblesObj.geometry.dispose();
+    }
+    const NB = (this.bubbleCount = 300);
+    this.bPos = new Float32Array(NB * 3);
+    this.bAgeN = new Float32Array(NB);
+    this.bAge = new Float32Array(NB);
+    this.bLife = new Float32Array(NB);
+    this.bPhase = new Float32Array(NB);
+    this.bSize = new Float32Array(NB);
+    for (let i = 0; i < NB; i++) {
+      this.bPhase[i] = Math.random();
+      this.bAge[i] = Math.random() * 2;
+      this.bLife[i] = 1.5 + Math.random() * 2.5;
+    }
+    const bubGeo = new THREE.BufferGeometry();
+    bubGeo.setAttribute('position', new THREE.BufferAttribute(this.bPos, 3).setUsage(THREE.DynamicDrawUsage));
+    bubGeo.setAttribute('aBAge', new THREE.BufferAttribute(this.bAgeN, 1).setUsage(THREE.DynamicDrawUsage));
+    bubGeo.setAttribute('aBSize', new THREE.BufferAttribute(this.bSize, 1).setUsage(THREE.DynamicDrawUsage));
+    this.bubblesObj = new THREE.Points(bubGeo, this.bubbleMaterial);
+    this.bubblesObj.frustumCulled = false;
+    this.scene.add(this.bubblesObj);
+
     this._applyMode();
     if (this.field) this.reseedAll();
   }
@@ -500,6 +592,7 @@ export class FlowSim {
     this.lifeScale = def.lifeScale ?? 1;
     this.frozen = !!def.frozen;
     this.showLinks = !!def.links;
+    this.showBubbles = !!def.bubbles;
     this._intensityScale = def.intensity;
     this._applyIntensity();
     const u = this.material.uniforms;
@@ -529,6 +622,7 @@ export class FlowSim {
     if (this.lines) this.lines.visible = this.mode === 'lines';
     if (this.sprites) this.sprites.visible = this.mode === 'sprites' || this.frozen;
     if (this.links) this.links.visible = this.showLinks;
+    if (this.bubblesObj) this.bubblesObj.visible = this.showBubbles;
   }
 
   _applyIntensity() {
@@ -890,6 +984,52 @@ export class FlowSim {
       a.aSpeed.needsUpdate = true;
     }
     if (this.showLinks) this._updateLinks();
+    if (this.showBubbles) this._updateBubbles(dt, scale, charSpeed);
+  }
+
+  // Bubbles ride a damped copy of the flow, rise, wobble, and respawn
+  // wherever a fish currently is.
+  _updateBubbles(dt, scale, charSpeed) {
+    const f = this.field;
+    const b = f.bounds;
+    const v1 = this._v1;
+    const pad = this.diag * 0.05;
+    const h = dt * scale;
+    const rise = 0.25 * charSpeed;
+    const NB = this.bubbleCount;
+    for (let i = 0; i < NB; i++) {
+      this.bAge[i] += dt;
+      let x = this.bPos[i * 3];
+      let y = this.bPos[i * 3 + 1];
+      let z = this.bPos[i * 3 + 2];
+      const out =
+        x < b.min[0] - pad || x > b.max[0] + pad ||
+        y < b.min[1] - pad || y > b.max[1] + pad ||
+        (f.is3D && (z < b.min[2] - pad || z > b.max[2] + pad));
+      if (this.bAge[i] > this.bLife[i] || out) {
+        const j = (Math.random() * this.count) | 0;
+        const jr = this.diag * 0.015;
+        x = this.positions[j * 3] + (Math.random() - 0.5) * jr;
+        y = this.positions[j * 3 + 1] + (Math.random() - 0.5) * jr;
+        z = f.is3D ? this.positions[j * 3 + 2] + (Math.random() - 0.5) * jr : 0;
+        this.bAge[i] = 0;
+        this.bLife[i] = 1.5 + Math.random() * 2.5;
+        this.bSize[i] = this.diag * (0.0025 + Math.random() * 0.005);
+      }
+      const ok = f.sample(x, y, z, v1);
+      const wob = Math.sin(this._time * 3 + this.bPhase[i] * 6.2832) * 0.15 * charSpeed;
+      x += ((ok ? v1[0] : 0) * 0.35 + wob) * h;
+      y += ((ok ? v1[1] : 0) * 0.35 + (f.is3D ? 0 : rise)) * h;
+      if (f.is3D) z += ((ok ? v1[2] : 0) * 0.35 + rise) * h;
+      this.bPos[i * 3] = x;
+      this.bPos[i * 3 + 1] = y;
+      this.bPos[i * 3 + 2] = z;
+      this.bAgeN[i] = this.bAge[i] / this.bLife[i];
+    }
+    const a = this.bubblesObj.geometry.attributes;
+    a.position.needsUpdate = true;
+    a.aBAge.needsUpdate = true;
+    a.aBSize.needsUpdate = true;
   }
 
   // Constellation: connect close pairs via a per-frame spatial hash.
