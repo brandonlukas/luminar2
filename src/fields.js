@@ -3,6 +3,8 @@
 //     sample(x, y, z, out) -> bool   (writes velocity into out[0..2]),
 //     spawn(out) -> void             (writes a spawn position into out[0..2]) }
 
+import { HANZI } from './hanzi.js';
+
 const TAU = Math.PI * 2;
 
 function rand(a, b) {
@@ -652,53 +654,61 @@ export function csvField(data, label = 'Uploaded CSV') {
   return finishField(field);
 }
 
-// Synthetic point measurements along a few brushstrokes. Unlike the analytic
-// presets this goes through the same machinery as an uploaded CSV — including
-// genuinely missing data: between the strokes there are no points at all, so
-// sample() fails there exactly as it does in the gaps of real-world data.
+// Synthetic point measurements laid along a real character — the path a
+// calligrapher's brush travels, in true stroke order (data: src/hanzi.js).
+// Goes through the same machinery as an uploaded CSV, including genuinely
+// missing data: between the strokes there are no points at all, so sample()
+// fails there exactly as it does in the gaps of real-world data.
 export function calligraphyField() {
-  const S = 9; // half-extent of the canvas
+  const g = HANZI[(Math.random() * HANZI.length) | 0];
+
+  // Fit the character into a 16-unit box centred on the origin.
+  const all = g.strokes.flat();
+  const xs = all.map((p) => p[0]);
+  const ys = all.map((p) => p[1]);
+  const mnx = Math.min(...xs);
+  const mxx = Math.max(...xs);
+  const mny = Math.min(...ys);
+  const mxy = Math.max(...ys);
+  const k = 16 / Math.max(mxx - mnx, mxy - mny);
+  const cx = (mnx + mxx) / 2;
+  const cy = (mny + mxy) / 2;
+
   const positions = [];
   const velocities = [];
-  const strokes = 4 + ((Math.random() * 3) | 0);
-  for (let s = 0; s < strokes; s++) {
-    let x = rand(-0.7, 0.7) * S;
-    let y = rand(-0.7, 0.7) * S;
-    let heading = rand(0, TAU);
-    let curl = rand(-0.2, 0.2);
-    const steps = 50 + ((Math.random() * 70) | 0);
-    const ds = 0.28;
-    const speed0 = rand(0.8, 1.6);
-    const width = rand(0.35, 0.6);
-    for (let t = 0; t < steps; t++) {
-      // persistent curvature makes hooks and loops rather than scribble
-      curl = curl * 0.97 + rand(-0.06, 0.06);
-      heading += curl;
-      if (Math.abs(x) > S || Math.abs(y) > S) {
-        // drifting off the canvas: ease the heading back toward centre
-        const back = Math.atan2(-y, -x) - heading;
-        heading += Math.atan2(Math.sin(back), Math.cos(back)) * 0.15;
-      }
-      x += Math.cos(heading) * ds;
-      y += Math.sin(heading) * ds;
-      const u = t / (steps - 1);
+  const ds = 0.22; // deposit spacing along the brush path
+  const width = 0.32; // half-width of each stroke's band of points
+  for (const s of g.strokes) {
+    // scale the median polyline, dropping coincident points
+    const pts = s
+      .map(([x, y]) => [(x - cx) * k, (y - cy) * k])
+      .filter((p, i, a) => !i || Math.hypot(p[0] - a[i - 1][0], p[1] - a[i - 1][1]) > 1e-6);
+    if (pts.length < 2) continue;
+    const cum = [0];
+    for (let i = 1; i < pts.length; i++) {
+      cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+    }
+    const total = cum[cum.length - 1];
+    const speed0 = rand(0.9, 1.3);
+    let seg = 1;
+    for (let d = 0; d <= total; d += ds) {
+      while (seg < pts.length - 1 && cum[seg] < d) seg++;
+      const l = cum[seg] - cum[seg - 1];
+      const f = (d - cum[seg - 1]) / l;
+      const [ax, ay] = pts[seg - 1];
+      const [bx, by] = pts[seg];
+      const px = ax + (bx - ax) * f;
+      const py = ay + (by - ay) * f;
+      const tx = (bx - ax) / l;
+      const ty = (by - ay) / l;
       // ink moves fastest mid-stroke; the tips are where flow is born and dies
+      const u = d / total;
       const spd = speed0 * (0.25 + 0.75 * Math.sin(Math.PI * u));
-      const tx = Math.cos(heading);
-      const ty = Math.sin(heading);
       for (let q = 0; q < 3; q++) {
         const off = rand(-width, width);
         const edge = 1 - (0.5 * Math.abs(off)) / width;
-        positions.push(
-          x - ty * off + rand(-0.06, 0.06),
-          y + tx * off + rand(-0.06, 0.06),
-          0
-        );
-        velocities.push(
-          tx * spd * edge + rand(-0.08, 0.08),
-          ty * spd * edge + rand(-0.08, 0.08),
-          0
-        );
+        positions.push(px - ty * off + rand(-0.05, 0.05), py + tx * off + rand(-0.05, 0.05), 0);
+        velocities.push(tx * spd * edge + rand(-0.06, 0.06), ty * spd * edge + rand(-0.06, 0.06), 0);
       }
     }
   }
@@ -710,7 +720,7 @@ export function calligraphyField() {
       count,
       is3D: false,
     },
-    'Calligraphy'
+    `Calligraphy · ${g.char} ${g.pinyin} (${g.meaning})`
   );
 }
 

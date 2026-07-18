@@ -62,7 +62,16 @@ downloadable from the panel.
 ## Presets
 
 2D: Vortex, Dipole, Saddle, Turbulence (random divergence-free Fourier field —
-click again to reroll). 3D: Lorenz attractor, ABC flow (periodic, wrapping).
+click again to reroll), Calligraphy (a real character — 風 wind, 水 water,
+流 flow, 雲 cloud, 光 light, or 火 fire — as point measurements along the
+brush's true stroke order, with genuine gaps between strokes; click again for
+another character). 3D: Lorenz attractor, ABC flow (periodic, wrapping).
+
+Calligraphy stroke medians come from
+[Hanzi Writer data](https://github.com/chanind/hanzi-writer-data), derived from
+[makemeahanzi](https://github.com/skishore/makemeahanzi) and Arphic's PL KaitiM
+GB / PL UKai fonts © 1999 Arphic Technology Co., Ltd., redistributed under the
+Arphic Public License (`licenses/arphic-public-license.txt`).
 
 ## Rendering
 
