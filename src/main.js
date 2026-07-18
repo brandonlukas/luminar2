@@ -2,8 +2,7 @@ import { FlowSim } from './sim.js';
 import { presets, csvField, vortexField } from './fields.js';
 import { MATERIALS } from './materials.js';
 import { parseCSV, generateSampleCSV } from './csv.js';
-
-const $ = (id) => document.getElementById(id);
+import { $, fmt, bindSlider, wireCSVIntake } from './ui.js';
 
 // ————————————————————————————————————————————————
 // Plates: small sims that lazily boot when scrolled into view
@@ -109,17 +108,15 @@ obs.onStats = (fps, simMs) => {
 };
 
 let uploadedField = null;
+let activeDataField = null; // whichever data field is on stage (upload or preset)
 
 function say(text) {
   message.textContent = text;
 }
 
-function fmt(n) {
-  return n.toLocaleString('en-US');
-}
-
 function activate(name, field) {
   obs.setField(field);
+  activeDataField = field.isData ? field : null;
   statField.textContent = field.name;
   statPoints.textContent = field.isData ? fmt(field.count) : 'analytic';
   document.querySelectorAll('.preset[data-preset]').forEach((btn) => {
@@ -154,13 +151,13 @@ function syncCutoffUI(field) {
 }
 
 cutoffSlider.addEventListener('input', () => {
-  if (!uploadedField) return;
-  uploadedField.setCutoff(Number(cutoffSlider.value) * uploadedField.spacing);
-  $('val-cutoff').textContent = uploadedField.cutoff.toPrecision(3);
+  if (!activeDataField) return;
+  activeDataField.setCutoff(Number(cutoffSlider.value) * activeDataField.spacing);
+  $('val-cutoff').textContent = activeDataField.cutoff.toPrecision(3);
 });
 
 $('ctl-idw').addEventListener('change', (e) => {
-  if (uploadedField) uploadedField.idw = e.target.checked;
+  if (activeDataField) activeDataField.idw = e.target.checked;
 });
 
 function loadCSVText(text, filename) {
@@ -178,18 +175,9 @@ function loadCSVText(text, filename) {
   }
 }
 
-function loadFile(file) {
-  const reader = new FileReader();
-  reader.onload = () => loadCSVText(reader.result, file.name);
-  reader.onerror = () => say('Error: could not read file.');
-  reader.readAsText(file);
-}
+wireCSVIntake(loadCSVText, () => say('Error: could not read file.'));
 
 $('btn-upload').addEventListener('click', () => $('file-input').click());
-$('file-input').addEventListener('change', (e) => {
-  if (e.target.files[0]) loadFile(e.target.files[0]);
-  e.target.value = '';
-});
 
 $('btn-load-sample').addEventListener('click', () => {
   loadCSVText(generateSampleCSV(), 'sample scatter');
@@ -198,29 +186,6 @@ $('btn-load-sample').addEventListener('click', () => {
 $('load-sample-link').addEventListener('click', () => {
   // Anchor scrolls to the observatory; we also load the data.
   loadCSVText(generateSampleCSV(), 'sample scatter');
-});
-
-// Drag & drop anywhere on the page
-const dropzone = $('dropzone');
-let dragDepth = 0;
-
-window.addEventListener('dragenter', (e) => {
-  e.preventDefault();
-  dragDepth++;
-  dropzone.hidden = false;
-});
-window.addEventListener('dragover', (e) => e.preventDefault());
-window.addEventListener('dragleave', (e) => {
-  e.preventDefault();
-  dragDepth = Math.max(0, dragDepth - 1);
-  if (dragDepth === 0) dropzone.hidden = true;
-});
-window.addEventListener('drop', (e) => {
-  e.preventDefault();
-  dragDepth = 0;
-  dropzone.hidden = true;
-  const file = e.dataTransfer?.files?.[0];
-  if (file) loadFile(file);
 });
 
 // Sample CSV download
@@ -235,29 +200,17 @@ $('sample-link').addEventListener('click', (e) => {
   URL.revokeObjectURL(url);
 });
 
-// ————— sliders —————
-
-function bindSlider(id, valueId, apply, format = (v) => v.toFixed(2)) {
-  const el = $(id);
-  const val = $(valueId);
-  const update = () => {
-    const v = Number(el.value);
-    val.textContent = format(v);
-    apply(v);
-  };
-  el.addEventListener('input', update);
-  update();
-}
+// ————— sliders (init: true applies each slider's starting value) —————
 
 bindSlider('ctl-count', 'val-count', (v) => {
   obs.setParticleCount(v);
   statParticles.textContent = fmt(v);
-}, (v) => fmt(v));
+}, fmt, true);
 
-bindSlider('ctl-speed', 'val-speed', (v) => (obs.speed = v), (v) => `${v.toFixed(2)}×`);
-bindSlider('ctl-size', 'val-size', (v) => (obs.sizeParam = v), (v) => `${v.toFixed(2)}×`);
-bindSlider('ctl-trails', 'val-trails', (v) => obs.setTrails(v));
-bindSlider('ctl-bloom', 'val-bloom', (v) => obs.setBloom(v));
+bindSlider('ctl-speed', 'val-speed', (v) => (obs.speed = v), (v) => `${v.toFixed(2)}×`, true);
+bindSlider('ctl-size', 'val-size', (v) => (obs.sizeParam = v), (v) => `${v.toFixed(2)}×`, true);
+bindSlider('ctl-trails', 'val-trails', (v) => obs.setTrails(v), undefined, true);
+bindSlider('ctl-bloom', 'val-bloom', (v) => obs.setBloom(v), undefined, true);
 
 // ————— substance —————
 

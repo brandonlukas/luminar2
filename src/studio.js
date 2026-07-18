@@ -2,9 +2,8 @@ import { FlowSim } from './sim.js';
 import { presets, csvField } from './fields.js';
 import { MATERIALS } from './materials.js';
 import { parseCSV } from './csv.js';
+import { $, fmt, bindSlider, wireCSVIntake } from './ui.js';
 
-const $ = (id) => document.getElementById(id);
-const fmt = (n) => n.toLocaleString('en-US');
 const say = (text) => { $('r-msg').textContent = text; };
 const trim = (v) => String(Number(v.toPrecision(3)));
 
@@ -19,6 +18,8 @@ const FIELDS = [
     note: 'Inflow along one axis, outflow along the other. At the exact centre the velocity is zero, and nothing stays.' },
   { key: 'turbulence', name: 'Turbulence', sub: 'random fourier weave', glyph: '≋',
     note: 'A divergence-free weave of random Fourier modes, generated fresh. Select it again to reroll.' },
+  { key: 'calligraphy', name: 'Calligraphy', sub: 'point data, with gaps', glyph: '⌇',
+    note: 'Brushstrokes of synthetic point measurements, run through the same machinery as an uploaded CSV. Between the strokes the data is genuinely missing — the dark is truly empty. Select again for a fresh glyph.' },
   { key: 'lorenz', name: 'Lorenz', sub: 'two-lobed attractor', glyph: '∿',
     note: 'σ = 10, ρ = 28, β = 8/3. Weather’s confession: never repeating, never leaving. Drag to orbit.' },
   { key: 'abc', name: 'ABC Flow', sub: 'periodic chaos', glyph: '⌗',
@@ -238,20 +239,10 @@ for (const [key, def] of Object.entries(MATERIALS)) {
 
 // ————— sliders / toggles (always act on the active chamber) —————
 
-function bindSlider(id, valueId, apply, format = (v) => v.toFixed(2)) {
-  const el = $(id);
-  const val = $(valueId);
-  el.addEventListener('input', () => {
-    const v = Number(el.value);
-    val.textContent = format(v);
-    apply(v);
-  });
-}
-
 bindSlider('ctl-count', 'val-count', (v) => {
   active.sim.setParticleCount(v);
   $('r-count').textContent = fmt(v);
-}, (v) => fmt(v));
+}, fmt);
 bindSlider('ctl-speed', 'val-speed', (v) => (active.sim.speed = v), (v) => `${v.toFixed(2)}×`);
 bindSlider('ctl-size', 'val-size', (v) => (active.sim.sizeParam = v), (v) => `${v.toFixed(2)}×`);
 bindSlider('ctl-trails', 'val-trails', (v) => active.sim.setTrails(v));
@@ -307,34 +298,7 @@ function loadCSVText(text, filename) {
   }
 }
 
-function loadFile(file) {
-  const reader = new FileReader();
-  reader.onload = () => loadCSVText(reader.result, file.name);
-  reader.onerror = () => say('error: could not read file');
-  reader.readAsText(file);
-}
-
-$('file-input').addEventListener('change', (e) => {
-  if (e.target.files[0]) loadFile(e.target.files[0]);
-  e.target.value = '';
-});
-
-const dropzone = $('dropzone');
-let dragDepth = 0;
-window.addEventListener('dragenter', (e) => { e.preventDefault(); dragDepth++; dropzone.hidden = false; });
-window.addEventListener('dragover', (e) => e.preventDefault());
-window.addEventListener('dragleave', (e) => {
-  e.preventDefault();
-  dragDepth = Math.max(0, dragDepth - 1);
-  if (dragDepth === 0) dropzone.hidden = true;
-});
-window.addEventListener('drop', (e) => {
-  e.preventDefault();
-  dragDepth = 0;
-  dropzone.hidden = true;
-  const file = e.dataTransfer?.files?.[0];
-  if (file) loadFile(file);
-});
+wireCSVIntake(loadCSVText, () => say('error: could not read file'));
 
 // ————— stats (the active chamber narrates) —————
 

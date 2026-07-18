@@ -652,11 +652,74 @@ export function csvField(data, label = 'Uploaded CSV') {
   return finishField(field);
 }
 
+// Synthetic point measurements along a few brushstrokes. Unlike the analytic
+// presets this goes through the same machinery as an uploaded CSV — including
+// genuinely missing data: between the strokes there are no points at all, so
+// sample() fails there exactly as it does in the gaps of real-world data.
+export function calligraphyField() {
+  const S = 9; // half-extent of the canvas
+  const positions = [];
+  const velocities = [];
+  const strokes = 4 + ((Math.random() * 3) | 0);
+  for (let s = 0; s < strokes; s++) {
+    let x = rand(-0.7, 0.7) * S;
+    let y = rand(-0.7, 0.7) * S;
+    let heading = rand(0, TAU);
+    let curl = rand(-0.2, 0.2);
+    const steps = 50 + ((Math.random() * 70) | 0);
+    const ds = 0.28;
+    const speed0 = rand(0.8, 1.6);
+    const width = rand(0.35, 0.6);
+    for (let t = 0; t < steps; t++) {
+      // persistent curvature makes hooks and loops rather than scribble
+      curl = curl * 0.97 + rand(-0.06, 0.06);
+      heading += curl;
+      if (Math.abs(x) > S || Math.abs(y) > S) {
+        // drifting off the canvas: ease the heading back toward centre
+        const back = Math.atan2(-y, -x) - heading;
+        heading += Math.atan2(Math.sin(back), Math.cos(back)) * 0.15;
+      }
+      x += Math.cos(heading) * ds;
+      y += Math.sin(heading) * ds;
+      const u = t / (steps - 1);
+      // ink moves fastest mid-stroke; the tips are where flow is born and dies
+      const spd = speed0 * (0.25 + 0.75 * Math.sin(Math.PI * u));
+      const tx = Math.cos(heading);
+      const ty = Math.sin(heading);
+      for (let q = 0; q < 3; q++) {
+        const off = rand(-width, width);
+        const edge = 1 - (0.5 * Math.abs(off)) / width;
+        positions.push(
+          x - ty * off + rand(-0.06, 0.06),
+          y + tx * off + rand(-0.06, 0.06),
+          0
+        );
+        velocities.push(
+          tx * spd * edge + rand(-0.08, 0.08),
+          ty * spd * edge + rand(-0.08, 0.08),
+          0
+        );
+      }
+    }
+  }
+  const count = positions.length / 3;
+  return csvField(
+    {
+      positions: new Float32Array(positions),
+      velocities: new Float32Array(velocities),
+      count,
+      is3D: false,
+    },
+    'Calligraphy'
+  );
+}
+
 export const presets = {
   vortex: vortexField,
   saddle: saddleField,
   dipole: dipoleField,
   turbulence: turbulenceField,
+  calligraphy: calligraphyField,
   lorenz: lorenzField,
   abc: abcField,
   fluid: fluidField,
