@@ -515,6 +515,7 @@ export class FlowSim {
     this.ages = new Float32Array(n);
     this.lives = new Float32Array(n);
     this.agesN = new Float32Array(n);
+    this.stall = new Float32Array(n); // seconds of continuous near-zero flow
     this.phases = new Float32Array(n);
     for (let i = 0; i < n; i++) this.phases[i] = Math.random();
     // Segment buffers for line mode: (prev, curr) pair per particle.
@@ -889,6 +890,7 @@ export class FlowSim {
     this.ages[i] = 0;
     this.lives[i] = (3 + Math.random() * 6) * this.lifeScale;
     this.speeds[i] = 0;
+    this.stall[i] = 0;
     // Collapse the particle's line segment so no streak spans the jump.
     const s = this.segPositions;
     if (s) {
@@ -1159,6 +1161,19 @@ export class FlowSim {
       p[ix + 2] = z;
       const sp = Math.hypot(vx, vy, vz) / charSpeed;
       this.speeds[i] = sp;
+      // Sustained stall: only true stagnation trips this — opposing strokes
+      // blending to zero, sink points. The threshold sits far below any
+      // gliding flow, and it takes half a second of continuous stillness,
+      // so a particle drifting slowly through a saddle never triggers it.
+      // The regular life fade does the vanishing; nothing pops.
+      if (sp < 0.025) {
+        this.stall[i] += dt;
+        if (this.stall[i] > 0.5) {
+          this.ages[i] = Math.max(this.ages[i], this.lives[i] * 0.8);
+        }
+      } else {
+        this.stall[i] = 0;
+      }
       this.agesN[i] = this.ages[i] / this.lives[i];
 
       if (spriteMode) {
