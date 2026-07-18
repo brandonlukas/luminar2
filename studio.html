@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Luminar Studio</title>
+    <meta name="description" content="The Luminar workbench: a catalogue of vector fields, a substance atlas, and one observation chamber. Everything live, everything yours to stir." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23faf3e7'/%3E%3Ccircle cx='8' cy='8' r='5' fill='none' stroke='%231a1512' stroke-width='1'/%3E%3Ccircle cx='8' cy='8' r='1.6' fill='%23d0331b'/%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/studio.css" />
+  </head>
+  <body>
+    <div id="studio">
+      <header class="s-top">
+        <div class="s-brand">
+          <span class="s-mark" aria-hidden="true">⊙</span>
+          <span class="s-name">Luminar Studio</span>
+          <span class="s-sub">fields under observation</span>
+        </div>
+        <nav class="s-nav">
+          <a href="./">the atlas ↗</a>
+          <a href="https://github.com/brandonlukas/luminar2" rel="noopener">source ↗</a>
+        </nav>
+      </header>
+
+      <aside class="s-left">
+        <h2 class="s-head">Catalogue of Fields</h2>
+        <div id="catalog" role="listbox" aria-label="fields"></div>
+        <div class="s-note">
+          <p id="field-note"></p>
+        </div>
+      </aside>
+
+      <main class="s-stage">
+        <div class="s-frame" id="frame">
+          <span class="s-corner tl" id="corner-tl"></span>
+          <span class="s-corner tr" id="corner-tr"></span>
+          <span class="s-corner bl" id="corner-bl"></span>
+          <span class="s-corner br" id="corner-br"></span>
+          <span class="s-chamber">Observation Chamber</span>
+          <div id="studio-canvas" aria-label="particle flow"></div>
+        </div>
+      </main>
+
+      <aside class="s-right">
+        <h2 class="s-head">Substance Atlas</h2>
+        <div id="substances" role="listbox" aria-label="substances"></div>
+
+        <h2 class="s-head">Method</h2>
+        <label class="s-control">
+          <span class="s-label">Count <span class="s-val" id="val-count"></span></span>
+          <input type="range" id="ctl-count" min="1000" max="60000" step="1000" value="18000" />
+        </label>
+        <label class="s-control">
+          <span class="s-label">Speed <span class="s-val" id="val-speed"></span></span>
+          <input type="range" id="ctl-speed" min="0.1" max="3" step="0.05" value="1" />
+        </label>
+        <label class="s-control">
+          <span class="s-label">Size <span class="s-val" id="val-size"></span></span>
+          <input type="range" id="ctl-size" min="0.3" max="3" step="0.05" value="1" />
+        </label>
+        <label class="s-control">
+          <span class="s-label">Trails <span class="s-val" id="val-trails"></span></span>
+          <input type="range" id="ctl-trails" min="0" max="0.96" step="0.01" value="0.88" />
+        </label>
+        <label class="s-control">
+          <span class="s-label">Bloom <span class="s-val" id="val-bloom"></span></span>
+          <input type="range" id="ctl-bloom" min="0" max="2.5" step="0.05" value="0.8" />
+        </label>
+        <label class="s-check">
+          <input type="checkbox" id="ctl-gusts" />
+          <span>Gusts — spawn in drifting bursts</span>
+        </label>
+
+        <div id="csv-controls" hidden>
+          <h2 class="s-head">Data</h2>
+          <label class="s-control">
+            <span class="s-label">Cutoff <span class="s-val" id="val-cutoff"></span></span>
+            <input type="range" id="ctl-cutoff" min="0.5" max="10" step="0.1" value="2.5" />
+          </label>
+          <label class="s-check">
+            <input type="checkbox" id="ctl-idw" />
+            <span>Smooth — blend nearby points</span>
+          </label>
+        </div>
+
+        <div class="s-actions">
+          <button id="btn-pause" class="s-btn">Pause</button>
+          <button id="btn-reseed" class="s-btn">Reseed</button>
+        </div>
+        <input type="file" id="file-input" accept=".csv,.txt,.tsv,text/csv" hidden />
+      </aside>
+
+      <footer class="s-bottom">
+        <span><em>field</em> <span id="r-field">—</span></span>
+        <span><em>substance</em> <span id="r-sub">—</span></span>
+        <span><em>particles</em> <span id="r-count">—</span></span>
+        <span><em>domain</em> <span id="r-domain">—</span></span>
+        <span><em>sim</em> <span id="r-sim">—</span></span>
+        <span><em>fps</em> <span id="r-fps">—</span></span>
+        <span class="s-hint" id="r-msg">drop a csv anywhere · space pauses</span>
+      </footer>
+    </div>
+
+    <div id="dropzone" hidden><div class="drop-inner">Drop CSV<span>x, y, dx, dy — position &amp; velocity per row</span></div></div>
+    <script type="module" src="/src/studio.js"></script>
+  </body>
+</html>

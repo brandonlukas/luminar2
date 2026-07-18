@@ -18,6 +18,10 @@ solved field.
 Warm editorial paper (Fraunces + IBM Plex Mono) around dark glowing plates;
 the visual language owes a debt to David Aerne's playful documentation sites.
 
+Two faces: the atlas (index) — a scrolling illustrated essay — and the
+Studio (studio.html) — a full-screen workbench with a catalogue of fields,
+a substance atlas, and one observation chamber.
+
 ## Run
 
 ```sh
