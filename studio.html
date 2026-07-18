@@ -19,6 +19,10 @@
           <span class="s-name">Luminar Studio</span>
           <span class="s-sub">fields under observation</span>
         </div>
+        <div class="s-view" role="group" aria-label="view">
+          <button class="s-viewbtn" id="view-single" aria-pressed="true">single</button>
+          <button class="s-viewbtn" id="view-dual" aria-pressed="false">dual</button>
+        </div>
         <nav class="s-nav">
           <a href="./">the atlas ↗</a>
           <a href="https://github.com/brandonlukas/luminar2" rel="noopener">source ↗</a>
@@ -33,14 +37,22 @@
         </div>
       </aside>
 
-      <main class="s-stage">
-        <div class="s-frame" id="frame">
-          <span class="s-corner tl" id="corner-tl"></span>
-          <span class="s-corner tr" id="corner-tr"></span>
-          <span class="s-corner bl" id="corner-bl"></span>
-          <span class="s-corner br" id="corner-br"></span>
+      <main class="s-stage" id="stage">
+        <div class="s-frame chamber" data-chamber="0">
+          <span class="s-corner tl"></span>
+          <span class="s-corner tr"></span>
+          <span class="s-corner bl"></span>
+          <span class="s-corner br"></span>
           <span class="s-chamber">Observation Chamber</span>
-          <div id="studio-canvas" aria-label="particle flow"></div>
+          <div class="s-canvas" aria-label="particle flow, chamber A"></div>
+        </div>
+        <div class="s-frame chamber" data-chamber="1" hidden>
+          <span class="s-corner tl"></span>
+          <span class="s-corner tr"></span>
+          <span class="s-corner bl"></span>
+          <span class="s-corner br"></span>
+          <span class="s-chamber">Chamber B</span>
+          <div class="s-canvas" aria-label="particle flow, chamber B"></div>
         </div>
       </main>
 

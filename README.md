@@ -20,7 +20,9 @@ the visual language owes a debt to David Aerne's playful documentation sites.
 
 Two faces: the atlas (index) — a scrolling illustrated essay — and the
 Studio (studio.html) — a full-screen workbench with a catalogue of fields,
-a substance atlas, and one observation chamber.
+a substance atlas, and an observation chamber that can split into two for
+side-by-side comparison (two datasets, two substances, two independently
+stirred fluids).
 
 ## Run
 
