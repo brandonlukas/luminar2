@@ -874,11 +874,20 @@ export class FlowSim {
     const sigma = this.diag * 0.038;
     const g = () => (Math.random() + Math.random() + Math.random() - 1.5) * 1.4 * sigma;
     const bb = this.field.bounds;
-    out[0] = Math.min(bb.max[0], Math.max(bb.min[0], c.p[0] + g()));
-    out[1] = Math.min(bb.max[1], Math.max(bb.min[1], c.p[1] + g()));
-    out[2] = this.field.is3D
-      ? Math.min(bb.max[2], Math.max(bb.min[2], c.p[2] + g()))
-      : 0;
+    // The scatter must land on the field's data (sparse fields would leak
+    // gusts into the void); analytic fields accept the first try. Failing
+    // all tries, the burst centre itself is always legal.
+    for (let t = 0; t < 8; t++) {
+      out[0] = Math.min(bb.max[0], Math.max(bb.min[0], c.p[0] + g()));
+      out[1] = Math.min(bb.max[1], Math.max(bb.min[1], c.p[1] + g()));
+      out[2] = this.field.is3D
+        ? Math.min(bb.max[2], Math.max(bb.min[2], c.p[2] + g()))
+        : 0;
+      if (this.field.sample(out[0], out[1], out[2], this._v2)) return;
+    }
+    out[0] = c.p[0];
+    out[1] = c.p[1];
+    out[2] = this.field.is3D ? c.p[2] : 0;
   }
 
   _respawn(i) {
