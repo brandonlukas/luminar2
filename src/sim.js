@@ -454,6 +454,9 @@ export class FlowSim {
     this.jitter = 0;
     this.lifeScale = 1;
     this.clustered = false;
+    this.sourceSpawn = false;
+    this._srcSampler = null;
+    this._srcTimer = 0;
     this.frozen = false;
     this.showLinks = false;
     this._clusters = [];
@@ -524,6 +527,8 @@ export class FlowSim {
 
   setField(field) {
     this.field = field;
+    this._srcSampler = null;
+    this._srcTimer = Infinity;
     const b = field.bounds;
     this.diag = Math.hypot(
       b.max[0] - b.min[0],
@@ -672,6 +677,100 @@ export class FlowSim {
     this._clusters = [];
   }
 
+  setSources(on) {
+    this.sourceSpawn = on;
+    this._srcSampler = null;
+    this._srcTimer = Infinity; // rebuild on the next frame
+  }
+
+  // Spawn either uniformly (the field's own rule) or from detected sources.
+  _spawnPoint(out) {
+    if (this.sourceSpawn && this._srcSampler) this._srcSampler(out);
+    else this.field.spawn(out);
+  }
+
+  // Estimate where flow emerges: positive divergence in the interior plus
+  // inflow across the boundary. Cells are weighted, prefix-summed, and
+  // sampled; a small uniform floor keeps every region alive.
+  _buildSources() {
+    const f = this.field;
+    const b = f.bounds;
+    const is3D = f.is3D;
+    const n = is3D ? 16 : 44;
+    const nx = n;
+    const ny = n;
+    const nz = is3D ? n : 1;
+    const sx = (b.max[0] - b.min[0]) / nx || 1;
+    const sy = (b.max[1] - b.min[1]) / ny || 1;
+    const sz = is3D ? (b.max[2] - b.min[2]) / nz || 1 : 1;
+    const h = 0.5 * Math.min(sx, sy, is3D ? sz : sx);
+    const va = [0, 0, 0];
+    const vb = [0, 0, 0];
+    const vc = [0, 0, 0];
+    const wts = new Float32Array(nx * ny * nz);
+    let total = 0;
+    let c = 0;
+    for (let k = 0; k < nz; k++) {
+      const z = is3D ? b.min[2] + (k + 0.5) * sz : 0;
+      for (let j = 0; j < ny; j++) {
+        const y = b.min[1] + (j + 0.5) * sy;
+        for (let i = 0; i < nx; i++, c++) {
+          const x = b.min[0] + (i + 0.5) * sx;
+          if (!f.sample(x, y, z, vc)) continue;
+          let div = 0;
+          if (f.sample(x + h, y, z, va) && f.sample(x - h, y, z, vb)) {
+            div += (va[0] - vb[0]) / (2 * h);
+          }
+          if (f.sample(x, y + h, z, va) && f.sample(x, y - h, z, vb)) {
+            div += (va[1] - vb[1]) / (2 * h);
+          }
+          if (is3D && f.sample(x, y, z + h, va) && f.sample(x, y, z - h, vb)) {
+            div += (va[2] - vb[2]) / (2 * h);
+          }
+          let w = Math.max(0, div);
+          if (i === 0) w += Math.max(0, vc[0]) / sx;
+          if (i === nx - 1) w += Math.max(0, -vc[0]) / sx;
+          if (j === 0) w += Math.max(0, vc[1]) / sy;
+          if (j === ny - 1) w += Math.max(0, -vc[1]) / sy;
+          if (is3D) {
+            if (k === 0) w += Math.max(0, vc[2]) / sz;
+            if (k === nz - 1) w += Math.max(0, -vc[2]) / sz;
+          }
+          wts[c] = w;
+          total += w;
+        }
+      }
+    }
+    if (total < 1e-12) {
+      // divergence-free and closed: sources are everywhere; stay uniform
+      this._srcSampler = null;
+      return;
+    }
+    const floor = (0.12 * total) / wts.length;
+    const cdf = new Float32Array(wts.length);
+    let acc = 0;
+    for (let m = 0; m < wts.length; m++) {
+      acc += wts[m] + floor;
+      cdf[m] = acc;
+    }
+    this._srcSampler = (out) => {
+      const r = Math.random() * acc;
+      let lo = 0;
+      let hi = cdf.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (cdf[mid] < r) lo = mid + 1;
+        else hi = mid;
+      }
+      const i = lo % nx;
+      const j = ((lo / nx) | 0) % ny;
+      const k = (lo / (nx * ny)) | 0;
+      out[0] = b.min[0] + (i + Math.random()) * sx;
+      out[1] = b.min[1] + (j + Math.random()) * sy;
+      out[2] = is3D ? b.min[2] + (k + Math.random()) * sz : 0;
+    };
+  }
+
   clearTrails() {
     this.afterimagePass.uniforms.damp.value = 0;
     this._clearTrailsNext = true;
@@ -753,7 +852,7 @@ export class FlowSim {
       const K = 8;
       for (let k = 0; k < K; k++) {
         const p = [0, 0, 0];
-        this.field.spawn(p);
+        this._spawnPoint(p);
         this._clusters.push({ p, age: Math.random() * 2, life: 1.5 + Math.random() * 3 });
       }
     }
@@ -770,7 +869,7 @@ export class FlowSim {
 
   _respawn(i) {
     if (this.clustered) this._clusterSpawn(this._spawn);
-    else this.field.spawn(this._spawn);
+    else this._spawnPoint(this._spawn);
     this.positions[i * 3] = this._spawn[0];
     this.positions[i * 3 + 1] = this._spawn[1];
     this.positions[i * 3 + 2] = this._spawn[2];
@@ -914,6 +1013,13 @@ export class FlowSim {
     const b = f.bounds;
     const scale = (this.speed * this.materialSpeed * 0.14 * this.diag) / f.charSpeed;
     const charSpeed = f.charSpeed;
+    if (this.sourceSpawn) {
+      this._srcTimer += dt;
+      if (this._srcTimer > 2 || !this._srcSampler) {
+        this._buildSources();
+        this._srcTimer = 0;
+      }
+    }
     const jitter = this.jitter * charSpeed;
     const pad = this.diag * 0.03;
     const spriteMode = this.mode === 'sprites';
@@ -940,7 +1046,7 @@ export class FlowSim {
       for (const c of this._clusters) {
         c.age += dt;
         if (c.age > c.life) {
-          f.spawn(c.p);
+          this._spawnPoint(c.p);
           c.age = 0;
           c.life = 1.5 + Math.random() * 3;
         }

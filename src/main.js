@@ -299,6 +299,8 @@ $('btn-reseed').addEventListener('click', () => { obs.reseedAll(); obs.clearTrai
 
 $('ctl-gusts').addEventListener('change', (e) => obs.setGusts(e.target.checked));
 
+$('ctl-sources').addEventListener('change', (e) => obs.setSources(e.target.checked));
+
 // ————— boot —————
 
 setSubstance('stardust');

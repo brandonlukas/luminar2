@@ -123,6 +123,7 @@ function syncPanels() {
   $('ctl-bloom').value = String(sim.bloomPass.strength);
   $('val-bloom').textContent = sim.bloomPass.strength.toFixed(2);
   $('ctl-gusts').checked = sim.clustered;
+  $('ctl-sources').checked = sim.sourceSpawn;
   $('btn-pause').textContent = sim.paused ? 'Resume' : 'Pause';
 
   const field = sim.field;
@@ -257,6 +258,8 @@ bindSlider('ctl-trails', 'val-trails', (v) => active.sim.setTrails(v));
 bindSlider('ctl-bloom', 'val-bloom', (v) => active.sim.setBloom(v));
 
 $('ctl-gusts').addEventListener('change', (e) => active.sim.setGusts(e.target.checked));
+
+$('ctl-sources').addEventListener('change', (e) => active.sim.setSources(e.target.checked));
 
 $('ctl-cutoff').addEventListener('input', () => {
   const f = active.sim.field;
