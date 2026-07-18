@@ -62,9 +62,6 @@ const FRAG = /* glsl */ `
     }
     // gentle fade in/out over each particle's life — no sudden vanishing
     alpha *= smoothstep(0.0, 0.08, vAgeN) * (1.0 - smoothstep(0.82, 1.0, vAgeN));
-    // near-stalled particles (piling into a sink) contribute less light,
-    // so convergence points read as soft glows, not blown-out stars
-    alpha *= 0.22 + 0.78 * smoothstep(0.0, 0.28, vSpeed);
     alpha *= uIntensity;
     // Blending is ONE,ONE: color carries all the energy.
     gl_FragColor = vec4(col * alpha, 1.0);
@@ -93,7 +90,6 @@ const LINE_FRAG = /* glsl */ `
   void main() {
     vec3 col = mix(uColorSlow, uColorFast, clamp(vSpeed, 0.0, 1.0));
     float fade = smoothstep(0.0, 0.08, vAgeN) * (1.0 - smoothstep(0.82, 1.0, vAgeN));
-    fade *= 0.22 + 0.78 * smoothstep(0.0, 0.28, vSpeed);
     gl_FragColor = vec4(col * uIntensity * fade, 1.0);
   }
 `;
@@ -1124,19 +1120,6 @@ export class FlowSim {
       }
 
       this.ages[i] += dt;
-      // Stall death: a particle that reaches a sink (or any stagnation
-      // point) stops moving but keeps accumulating light on one pixel,
-      // blowing out to a hard star. Age it out fast so it dissolves and
-      // respawns instead of piling up — sinks read as soft glows, not
-      // blown highlights. Sustained stalls fade in ~1s; brief slow
-      // patches barely nudge the age.
-      const spn = Math.hypot(vx, vy, vz) / charSpeed;
-      if (spn < 0.09) {
-        // Enter the fade-out window and race to death in ~0.4s regardless
-        // of remaining life, so few stalled particles ever coexist on a
-        // sink and it can't saturate into a blown (and bloom-blocked) star.
-        this.ages[i] = Math.max(this.ages[i], this.lives[i] * 0.83) + dt * 4;
-      }
       const out =
         x < b.min[0] - pad || x > b.max[0] + pad ||
         y < b.min[1] - pad || y > b.max[1] + pad ||
