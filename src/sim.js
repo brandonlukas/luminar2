@@ -19,7 +19,6 @@ const VERT = /* glsl */ `
   uniform float uPixPerUnit;  // orthographic pixels per world unit
   uniform float uPerspFactor; // h_px / (2 tan(fov/2))
   uniform float uPersp;       // 1 = perspective camera
-  uniform float uStyle;
 
   void main() {
     vSpeed = speed;
@@ -313,6 +312,23 @@ const InkShader = {
   `,
 };
 
+// Every particle material blends additively (ONE,ONE) with no depth
+// writes/tests — color carries all the energy.
+function additiveMaterial(vertexShader, fragmentShader, uniforms, extra = {}) {
+  return new THREE.ShaderMaterial({
+    vertexShader,
+    fragmentShader,
+    uniforms,
+    transparent: true,
+    depthWrite: false,
+    depthTest: false,
+    blending: THREE.CustomBlending,
+    blendSrc: THREE.OneFactor,
+    blendDst: THREE.OneFactor,
+    ...extra,
+  });
+}
+
 export class FlowSim {
   // opts.controls: 'full' (orbit/zoom/pan), 'rotate' (drag only — the page
   // keeps its scroll wheel), or 'none'. opts.pixelRatio caps DPR per plate.
@@ -337,42 +353,22 @@ export class FlowSim {
     this.controls = null;
     this.boundsBox = null;
 
-    this.material = new THREE.ShaderMaterial({
-      vertexShader: VERT,
-      fragmentShader: FRAG,
-      uniforms: {
-        uWorldSize: { value: 1 },
-        uPixPerUnit: { value: 1 },
-        uPerspFactor: { value: 1 },
-        uPersp: { value: 0 },
-        uColorSlow: { value: new THREE.Color(0.07, 0.22, 0.95) },
-        uColorFast: { value: new THREE.Color(1.0, 0.82, 0.55) },
-        uIntensity: { value: 0.18 },
-        uStyle: { value: 0 },
-        uTime: { value: 0 },
-      },
-      transparent: true,
-      depthWrite: false,
-      depthTest: false,
-      blending: THREE.CustomBlending,
-      blendSrc: THREE.OneFactor,
-      blendDst: THREE.OneFactor,
+    this.material = additiveMaterial(VERT, FRAG, {
+      uWorldSize: { value: 1 },
+      uPixPerUnit: { value: 1 },
+      uPerspFactor: { value: 1 },
+      uPersp: { value: 0 },
+      uColorSlow: { value: new THREE.Color(0.07, 0.22, 0.95) },
+      uColorFast: { value: new THREE.Color(1.0, 0.82, 0.55) },
+      uIntensity: { value: 0.18 },
+      uStyle: { value: 0 },
+      uTime: { value: 0 },
     });
     // Line material shares the point material's uniform objects.
-    this.lineMaterial = new THREE.ShaderMaterial({
-      vertexShader: LINE_VERT,
-      fragmentShader: LINE_FRAG,
-      uniforms: {
-        uColorSlow: this.material.uniforms.uColorSlow,
-        uColorFast: this.material.uniforms.uColorFast,
-        uIntensity: this.material.uniforms.uIntensity,
-      },
-      transparent: true,
-      depthWrite: false,
-      depthTest: false,
-      blending: THREE.CustomBlending,
-      blendSrc: THREE.OneFactor,
-      blendDst: THREE.OneFactor,
+    this.lineMaterial = additiveMaterial(LINE_VERT, LINE_FRAG, {
+      uColorSlow: this.material.uniforms.uColorSlow,
+      uColorFast: this.material.uniforms.uColorFast,
+      uIntensity: this.material.uniforms.uIntensity,
     });
     // Glyph atlas: 8 symbols drawn once into a canvas texture. The sprite
     // quad's velocity alignment rotates them — arrows point downstream free.
@@ -389,58 +385,27 @@ export class FlowSim {
     });
     this.atlasTex = new THREE.CanvasTexture(atlas);
 
-    this.spriteMaterial = new THREE.ShaderMaterial({
-      vertexShader: SPRITE_VERT,
-      fragmentShader: SPRITE_FRAG,
-      uniforms: {
-        uColorSlow: this.material.uniforms.uColorSlow,
-        uColorFast: this.material.uniforms.uColorFast,
-        uIntensity: this.material.uniforms.uIntensity,
-        uLen: { value: 1 },
-        uWidth: { value: 1 },
-        uSpriteStyle: { value: 0 },
-        uSpriteFade: { value: 1 },
-        uTime: this.material.uniforms.uTime,
-        uAtlas: { value: this.atlasTex },
-      },
-      transparent: true,
-      depthWrite: false,
-      depthTest: false,
-      side: THREE.DoubleSide,
-      blending: THREE.CustomBlending,
-      blendSrc: THREE.OneFactor,
-      blendDst: THREE.OneFactor,
-    });
+    this.spriteMaterial = additiveMaterial(SPRITE_VERT, SPRITE_FRAG, {
+      uColorSlow: this.material.uniforms.uColorSlow,
+      uColorFast: this.material.uniforms.uColorFast,
+      uIntensity: this.material.uniforms.uIntensity,
+      uLen: { value: 1 },
+      uWidth: { value: 1 },
+      uSpriteStyle: { value: 0 },
+      uSpriteFade: { value: 1 },
+      uTime: this.material.uniforms.uTime,
+      uAtlas: { value: this.atlasTex },
+    }, { side: THREE.DoubleSide });
     // Constellation links get their own (dimmer) intensity.
-    this.linkMaterial = new THREE.ShaderMaterial({
-      vertexShader: LINE_VERT,
-      fragmentShader: LINE_FRAG,
-      uniforms: {
-        uColorSlow: this.material.uniforms.uColorSlow,
-        uColorFast: this.material.uniforms.uColorFast,
-        uIntensity: { value: 0.3 },
-      },
-      transparent: true,
-      depthWrite: false,
-      depthTest: false,
-      blending: THREE.CustomBlending,
-      blendSrc: THREE.OneFactor,
-      blendDst: THREE.OneFactor,
+    this.linkMaterial = additiveMaterial(LINE_VERT, LINE_FRAG, {
+      uColorSlow: this.material.uniforms.uColorSlow,
+      uColorFast: this.material.uniforms.uColorFast,
+      uIntensity: { value: 0.3 },
     });
-    this.bubbleMaterial = new THREE.ShaderMaterial({
-      vertexShader: BUBBLE_VERT,
-      fragmentShader: BUBBLE_FRAG,
-      uniforms: {
-        uPixPerUnit: this.material.uniforms.uPixPerUnit,
-        uPerspFactor: this.material.uniforms.uPerspFactor,
-        uPersp: this.material.uniforms.uPersp,
-      },
-      transparent: true,
-      depthWrite: false,
-      depthTest: false,
-      blending: THREE.CustomBlending,
-      blendSrc: THREE.OneFactor,
-      blendDst: THREE.OneFactor,
+    this.bubbleMaterial = additiveMaterial(BUBBLE_VERT, BUBBLE_FRAG, {
+      uPixPerUnit: this.material.uniforms.uPixPerUnit,
+      uPerspFactor: this.material.uniforms.uPerspFactor,
+      uPersp: this.material.uniforms.uPersp,
     });
     this.points = null;
     this.lines = null;
@@ -690,8 +655,8 @@ export class FlowSim {
   }
 
   // Estimate where flow emerges: positive divergence in the interior plus
-  // inflow across the boundary. Cells are weighted, prefix-summed, and
-  // sampled; a small uniform floor keeps every region alive.
+  // inflow across the boundary. Cell weights bias the field's own spawner
+  // via rejection sampling; a small uniform floor keeps every region alive.
   _buildSources() {
     const f = this.field;
     const b = f.bounds;
@@ -704,10 +669,17 @@ export class FlowSim {
     const sy = (b.max[1] - b.min[1]) / ny || 1;
     const sz = is3D ? (b.max[2] - b.min[2]) / nz || 1 : 1;
     const h = 0.5 * Math.min(sx, sy, is3D ? sz : sx);
+    // "No flow" for practical purposes: below a few percent of the field's
+    // characteristic speed a spawned particle would just sit in the dark
+    // (real datasets carry zero-velocity points). Such cells and spawn
+    // candidates get no source mass at all.
+    const eps2 = 0.0025 * f.charSpeed * f.charSpeed;
     const va = [0, 0, 0];
     const vb = [0, 0, 0];
     const vc = [0, 0, 0];
     const wts = new Float32Array(nx * ny * nz);
+    const valid = new Uint8Array(nx * ny * nz);
+    let validCount = 0;
     let total = 0;
     let c = 0;
     for (let k = 0; k < nz; k++) {
@@ -717,6 +689,9 @@ export class FlowSim {
         for (let i = 0; i < nx; i++, c++) {
           const x = b.min[0] + (i + 0.5) * sx;
           if (!f.sample(x, y, z, vc)) continue;
+          if (vc[0] * vc[0] + vc[1] * vc[1] + vc[2] * vc[2] < eps2) continue;
+          valid[c] = 1;
+          validCount++;
           let div = 0;
           if (f.sample(x + h, y, z, va) && f.sample(x - h, y, z, vb)) {
             div += (va[0] - vb[0]) / (2 * h);
@@ -746,28 +721,66 @@ export class FlowSim {
       this._srcSampler = null;
       return;
     }
-    const floor = (0.12 * total) / wts.length;
-    const cdf = new Float32Array(wts.length);
-    let acc = 0;
+    // Reweight the field's own spawner rather than sampling the grid
+    // directly: draw candidates from field.spawn, drop any sitting in dead
+    // flow, and accept the rest proportionally to their cell's source
+    // weight. Every spawn is a point the field could produce with Sources
+    // off — never anywhere new, and never where the flow is still.
+    const floor = (0.12 * total) / validCount;
+    let maxW = 0;
     for (let m = 0; m < wts.length; m++) {
-      acc += wts[m] + floor;
-      cdf[m] = acc;
+      if (valid[m]) wts[m] += floor;
+      if (wts[m] > maxW) maxW = wts[m];
     }
-    this._srcSampler = (out) => {
-      const r = Math.random() * acc;
-      let lo = 0;
-      let hi = cdf.length - 1;
-      while (lo < hi) {
-        const mid = (lo + hi) >> 1;
-        if (cdf[mid] < r) lo = mid + 1;
-        else hi = mid;
+    // Clip the acceptance ceiling so one explosive cell can't reject nearly
+    // every candidate and wash the bias back toward plain spawning.
+    const avgW = (1.12 * total) / validCount;
+    if (maxW > 8 * avgW) maxW = 8 * avgW;
+
+    const vt = [0, 0, 0];
+    const live = (px, py, pz) =>
+      f.sample(px, py, pz, vt) &&
+      vt[0] * vt[0] + vt[1] * vt[1] + vt[2] * vt[2] >= eps2;
+
+    const cellW = (px, py, pz) => {
+      let i = Math.floor((px - b.min[0]) / sx);
+      let j = Math.floor((py - b.min[1]) / sy);
+      let k = is3D ? Math.floor((pz - b.min[2]) / sz) : 0;
+      if (i < 0) i = 0;
+      else if (i >= nx) i = nx - 1;
+      if (j < 0) j = 0;
+      else if (j >= ny) j = ny - 1;
+      if (k < 0) k = 0;
+      else if (k >= nz) k = nz - 1;
+      return wts[i + nx * (j + ny * k)];
+    };
+
+    // Verified-live fallback points, so exhausting the rejection loop can
+    // never surface a dead-zone spawn.
+    const pool = [];
+    const pp = [0, 0, 0];
+    for (let t = 0; t < 600 && pool.length < 32; t++) {
+      f.spawn(pp);
+      if (live(pp[0], pp[1], pp[2]) && cellW(pp[0], pp[1], pp[2]) > 0) {
+        pool.push([pp[0], pp[1], pp[2]]);
       }
-      const i = lo % nx;
-      const j = ((lo / nx) | 0) % ny;
-      const k = (lo / (nx * ny)) | 0;
-      out[0] = b.min[0] + (i + Math.random()) * sx;
-      out[1] = b.min[1] + (j + Math.random()) * sy;
-      out[2] = is3D ? b.min[2] + (k + Math.random()) * sz : 0;
+    }
+    if (!pool.length) {
+      // the field's spawner can't reach live flow: behave like the toggle off
+      this._srcSampler = null;
+      return;
+    }
+
+    this._srcSampler = (out) => {
+      for (let t = 0; t < 16; t++) {
+        f.spawn(out);
+        if (!live(out[0], out[1], out[2])) continue;
+        if (Math.random() * maxW <= cellW(out[0], out[1], out[2])) return;
+      }
+      const p = pool[(Math.random() * pool.length) | 0];
+      out[0] = p[0];
+      out[1] = p[1];
+      out[2] = p[2];
     };
   }
 
@@ -1015,7 +1028,10 @@ export class FlowSim {
     const charSpeed = f.charSpeed;
     if (this.sourceSpawn) {
       this._srcTimer += dt;
-      if (this._srcTimer > 2 || !this._srcSampler) {
+      // Toggling/field changes set the timer to Infinity, so a fresh build
+      // happens immediately; a build that falls back to uniform (sampler
+      // stays null) is only retried on the 2 s cadence, not every frame.
+      if (this._srcTimer > 2) {
         this._buildSources();
         this._srcTimer = 0;
       }
