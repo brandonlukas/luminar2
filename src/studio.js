@@ -85,7 +85,6 @@ class Chamber {
 const frames = document.querySelectorAll('.chamber');
 const chambers = [new Chamber(frames[0], 'A'), null];
 let active = chambers[0];
-let dual = false;
 
 function setActive(chamber) {
   if (chamber === active) return;
@@ -144,7 +143,6 @@ function syncPanels() {
 // ————— view toggle —————
 
 function setDual(on) {
-  dual = on;
   $('view-single').setAttribute('aria-pressed', String(!on));
   $('view-dual').setAttribute('aria-pressed', String(on));
   $('stage').classList.toggle('dual', on);

@@ -1,5 +1,5 @@
 import { FlowSim } from './sim.js';
-import { presets, csvField, vortexField } from './fields.js';
+import { presets, csvField } from './fields.js';
 import { MATERIALS } from './materials.js';
 import { parseCSV, generateSampleCSV } from './csv.js';
 import { $, fmt, bindSlider, wireCSVIntake } from './ui.js';
@@ -68,7 +68,7 @@ $('hero-stir').addEventListener('click', stirHero);
 // ————————————————————————————————————————————————
 
 function runBenchmark() {
-  const field = vortexField();
+  const field = presets.vortex();
   const out = [0, 0, 0];
   // warm-up, then measure
   for (let i = 0; i < 20000; i++) field.sample(Math.random() * 2 - 1, Math.random() * 2 - 1, 0, out);

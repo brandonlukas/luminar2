@@ -42,7 +42,7 @@ function finishField(field) {
 
 // ————— 2D presets (z = 0 plane) —————
 
-export function vortexField() {
+function vortexField() {
   const bounds = { min: [-1, -1, 0], max: [1, 1, 0] };
   return finishField({
     name: 'Vortex',
@@ -60,7 +60,7 @@ export function vortexField() {
   });
 }
 
-export function saddleField() {
+function saddleField() {
   const bounds = { min: [-1, -1, 0], max: [1, 1, 0] };
   return finishField({
     name: 'Saddle',
@@ -76,7 +76,7 @@ export function saddleField() {
   });
 }
 
-export function dipoleField() {
+function dipoleField() {
   const bounds = { min: [-1, -1, 0], max: [1, 1, 0] };
   const cores = [
     { x: -0.45, y: 0, s: 1 },
@@ -107,7 +107,7 @@ export function dipoleField() {
 
 // Divergence-free random field: velocity from a streamfunction built of
 // random Fourier modes. Re-created on every call for a fresh field.
-export function turbulenceField() {
+function turbulenceField() {
   const bounds = { min: [-1, -1, 0], max: [1, 1, 0] };
   const modes = [];
   for (let i = 0; i < 8; i++) {
@@ -140,7 +140,7 @@ export function turbulenceField() {
 
 // ————— 3D presets —————
 
-export function lorenzField() {
+function lorenzField() {
   const sigma = 10;
   const rho = 28;
   const beta = 8 / 3;
@@ -197,7 +197,7 @@ export function lorenzField() {
   });
 }
 
-export function abcField() {
+function abcField() {
   const A = Math.sqrt(3);
   const B = Math.sqrt(2);
   const C = 1;
@@ -221,7 +221,7 @@ export function abcField() {
 // Unlike every other field, this one evolves: sim calls update(dt) each
 // frame and stir(x, y, dx, dy) on pointer moves. Particles just sample it.
 
-export function fluidField() {
+function fluidField() {
   const N = 112;
   const S = N + 2;
   const u = new Float32Array(S * S);
@@ -515,10 +515,15 @@ export function csvField(data, label = 'Uploaded CSV') {
       // scale — independent of how far the validity cutoff reaches. Cells
       // match the blend radius so blending never walks past shell 1.
       const blendRadius = Math.min(this.cutoff, spacing * 2);
-      this.grid = new DenseGrid(positions, count, is3D, blendRadius, bounds, velocities);
+      // The grid depends only on the blend radius, which saturates at
+      // 2 spacings — dragging the cutoff slider above that would otherwise
+      // rebuild the whole grid on every input event; only gridR moves.
+      if (blendRadius !== this._gridRadius) {
+        this.grid = new DenseGrid(positions, count, is3D, blendRadius, bounds, velocities);
+        this._gridRadius = blendRadius;
+        this.blendR2 = blendRadius * blendRadius;
+      }
       this.gridR = Math.max(1, Math.ceil(this.cutoff / this.grid.cellSize));
-      this.blendR2 = blendRadius * blendRadius;
-      this.blendShells = 1;
     },
 
     spawn(out) {
@@ -552,7 +557,7 @@ export function csvField(data, label = 'Uploaded CSV') {
 
       const r2blend = this.blendR2;
       const invR2blend = 1 / r2blend;
-      const rBlend = this.blendShells;
+      const rBlend = 1; // blend radius never exceeds the cell size, so shell 1
       let wx = 0, wy = 0, wz = 0, wsum = 0;
       let best = r2max;
       let bi = -1;
@@ -659,7 +664,7 @@ export function csvField(data, label = 'Uploaded CSV') {
 // Goes through the same machinery as an uploaded CSV, including genuinely
 // missing data: between the strokes there are no points at all, so sample()
 // fails there exactly as it does in the gaps of real-world data.
-export function calligraphyField() {
+function calligraphyField() {
   const g = HANZI[(Math.random() * HANZI.length) | 0];
 
   // Fit the character into a 16-unit box centred on the origin.

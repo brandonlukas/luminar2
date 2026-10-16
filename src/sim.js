@@ -503,11 +503,13 @@ export class FlowSim {
     this._setupCamera();
     this._setupBoundsBox();
     this.reseedAll();
-    this.afterimagePass.uniforms.damp.value = 0; // clear stale trails one frame
-    this._clearTrailsNext = true;
+    this.clearTrails();
   }
 
   setParticleCount(n) {
+    // Substance switches and slider echoes often re-set the same count —
+    // don't rebuild every buffer and geometry for a no-op.
+    if (n === this.count && this.positions) return;
     this.count = n;
     this._applyIntensity();
     this.positions = new Float32Array(n * 3);
@@ -1059,7 +1061,7 @@ export class FlowSim {
         vels[i * 3] = ok ? v1[0] : 0;
         vels[i * 3 + 1] = ok ? v1[1] : 0;
         vels[i * 3 + 2] = ok ? v1[2] : 0;
-        this.speeds[i] = ok ? Math.hypot(v1[0], v1[1], v1[2]) / charSpeed : 0;
+        this.speeds[i] = ok ? Math.sqrt(v1[0] * v1[0] + v1[1] * v1[1] + v1[2] * v1[2]) / charSpeed : 0;
       }
       const a = this.sprites.geometry.attributes;
       a.aPos.needsUpdate = true;
@@ -1168,7 +1170,9 @@ export class FlowSim {
       p[ix] = x;
       p[ix + 1] = y;
       p[ix + 2] = z;
-      const sp = Math.hypot(vx, vy, vz) / charSpeed;
+      // sqrt over hypot: hypot is several times slower and this runs per
+      // particle per frame.
+      const sp = Math.sqrt(vx * vx + vy * vy + vz * vz) / charSpeed;
       this.speeds[i] = sp;
       // Sustained stall: only true stagnation trips this — opposing strokes
       // blending to zero, sink points. The threshold sits far below any
@@ -1281,7 +1285,10 @@ export class FlowSim {
     const linkR = this.diag * 0.055;
     const r2 = linkR * linkR;
     const cell = linkR;
-    const grid = new Map();
+    // Buckets persist across frames (emptied, not freed) — this runs every
+    // frame in constellation mode and a fresh Map of arrays is pure GC churn.
+    const grid = (this._linkGrid ??= new Map());
+    for (const bucket of grid.values()) bucket.length = 0;
     const p = this.positions;
     const is3D = this.field.is3D;
     for (let i = 0; i < n; i++) {
@@ -1306,8 +1313,9 @@ export class FlowSim {
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
             const b = grid.get(((cx + dx) * 73856093) ^ ((cy + dy) * 19349663) ^ ((cz + dz) * 83492791));
-            if (!b) continue;
-            for (const j of b) {
+            if (!b || b.length === 0) continue;
+            for (let bk = 0; bk < b.length; bk++) {
+              const j = b[bk];
               if (j <= i) continue;
               const ax = p[i * 3] - p[j * 3];
               const ay = p[i * 3 + 1] - p[j * 3 + 1];

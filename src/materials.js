@@ -61,7 +61,7 @@ export const MATERIALS = {
     speed: 0.9,
     trails: 0.9,
     bloom: 0.4,
-    invert: 'ink',
+    invert: true,
     colors: [[0.45, 0.45, 0.45], [1.15, 1.15, 1.15]],
   },
   embers: {
